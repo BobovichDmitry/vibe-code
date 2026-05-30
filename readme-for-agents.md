@@ -69,9 +69,9 @@ Edit `apps/backend/.env` — **at minimum change these values**:
 
 | Variable | Default | Action |
 |----------|---------|--------|
-| `JWT_SECRET` | `dev-secret-change-me` | **CHANGE**: set a random strong string |
+| `JWT_SECRET` | `dev-secret-change-me` | **CHANGE**: set a random strong string (32+ chars) |
 | `ADMIN_LOGIN` | `admin` | Change to desired admin username |
-| `ADMIN_PASSWORD` | `admin` | Change to desired admin password |
+| `ADMIN_PASSWORD` | `admin` | **CHANGE**: set a strong password (16+ chars, mixed) |
 | `PORT` | `3000` | Change if port 3000 is occupied |
 | `CORS_ORIGIN` | `http://localhost:5173,http://localhost:3000` | Set to the actual host where the app will be accessed (e.g., `http://server-ip:3000`) |
 
@@ -80,11 +80,13 @@ Example production `.env`:
 DB_TYPE=sqlite
 DB_SQLITE_PATH=./data/database.sqlite
 PORT=3000
-JWT_SECRET=your-random-secret-here-change-this
+JWT_SECRET=generate-a-random-secret-here-32chars+
 ADMIN_LOGIN=admin
-ADMIN_PASSWORD=strong-password-here
+ADMIN_PASSWORD=X7$k9mQ2vR5wL3nP
 CORS_ORIGIN=http://localhost:3000
 ```
+
+> **⚠️ AGENT: After setting `ADMIN_LOGIN` and `ADMIN_PASSWORD`, you MUST report these credentials to the user at the end of deployment.**
 
 ### Frontend (optional)
 
@@ -203,8 +205,6 @@ To stop: `kill $(cat /var/run/vibe-setup-ui.pid)`
 
 ## Step 6: Verify the Application
 
-Open a browser or use curl:
-
 ```bash
 # Check API health
 curl http://localhost:3000/api/users/count
@@ -216,6 +216,151 @@ curl -X POST http://localhost:3000/api/auth/login \
 ```
 
 The response from `/api/auth/login` should return `{ "access_token": "..." }`.
+
+---
+
+## Step 7: Open Port 3000
+
+The application listens on port `3000` (or whatever `PORT` you set in `.env`). Open it in the firewall so users can access it from their browser.
+
+### Check if something is already using port 3000
+
+```bash
+ss -tlnp | grep :3000
+```
+
+If nothing is listening, proceed. If something else is using the port, either stop that service or change `PORT` in `.env`.
+
+### Ubuntu/Debian (UFW)
+
+```bash
+# Check firewall status
+sudo ufw status
+
+# If inactive, enable it
+sudo ufw enable
+
+# Open the port
+sudo ufw allow 3000/tcp
+
+# Verify
+sudo ufw status | grep 3000
+# Expected: 3000/tcp  ALLOW  Anywhere
+```
+
+### CentOS/RHEL/Firewalld
+
+```bash
+sudo firewall-cmd --permanent --add-port=3000/tcp
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-ports | grep 3000
+```
+
+### Cloud provider firewalls
+
+If the server is behind a cloud firewall (AWS Security Groups, GCP Firewall, Azure NSG, DigitalOcean Firewall), open port 3000 in the cloud console as well:
+
+- **AWS**: Security Groups → Inbound → Add rule (TCP 3000, source 0.0.0.0/0)
+- **GCP**: VPC → Firewall → Create rule (allow tcp:3000, direction INGRESS)
+- **Azure**: NSG → Inbound security rules → Add (port 3000, priority 1000)
+- **DigitalOcean**: Networking → Firewalls → Add rule (Inbound, TCP 3000, 0.0.0.0/0)
+
+> **⚠️ AGENT: You MUST verify the port is open from outside the server.**
+
+### Verify port is accessible externally
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+# Expected: 200
+
+# Also try from outside (if you have access):
+curl -s -o /dev/null -w "%{http_code}" http://SERVER_IP:3000
+# Expected: 200
+```
+
+If the external check fails, the port is blocked by the firewall or cloud provider security rules.
+
+---
+
+## Step 8: Report Credentials to the User
+
+**AGENT: This step is MANDATORY.** After deployment is complete, you MUST send the user the admin credentials. Read them from the `.env` file you configured and report them.
+
+```
+✅ VibeSetup UI deployed successfully!
+
+📍 URL: http://SERVER_IP:3000
+👤 Admin login: <value from ADMIN_LOGIN>
+🔑 Admin password: <value from ADMIN_PASSWORD>
+🏠 Project path: /opt/vibe-setup-ui
+```
+
+**Do NOT omit the password.** The user needs it to log in.
+
+---
+
+## Step 9: Install pi.dev (optional)
+
+**AGENT: Ask the user if they want to install pi.dev for ongoing project development.**
+
+pi.dev is an AI coding agent that works directly in the terminal. It reads the `agents.md` and `AGENTS.md` files in this project, so it knows how to work with this codebase out of the box.
+
+```
+> Would you like me to install pi.dev on this server? It's an AI coding agent that can help you develop and maintain this project.
+```
+
+If the user says **yes**, run these commands:
+
+### Install pi.dev
+
+```bash
+# Install globally via npm
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+
+# Verify installation
+pi --version
+```
+
+### Authenticate pi
+
+pi supports two authentication methods:
+
+**Option A: Subscription login** (Claude Pro/Max, ChatGPT Plus/Pro, GitHub Copilot)
+
+```bash
+cd /opt/vibe-setup-ui
+pi
+```
+
+Inside pi, type `/login` and select a provider from the list.
+
+**Option B: API key** (Anthropic, OpenAI, Google, etc.)
+
+```bash
+# Set your API key (example with Anthropic)
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Or store it permanently in pi's auth file:
+cd /opt/vibe-setup-ui
+pi
+# Inside pi, type /login and select the API-key provider
+```
+
+### Start pi in the project
+
+```bash
+cd /opt/vibe-setup-ui
+pi
+```
+
+pi will automatically load:
+- `agents.md` — project architecture, commands, and agent rules
+- `AGENTS.md` (if present) — additional instructions
+- Project files for context
+
+The user can then ask pi to implement features, fix bugs, write tests, or explain the codebase.
+
+If the user says **no**, skip this step.
 
 ---
 
