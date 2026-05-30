@@ -1,0 +1,58 @@
+# Frontend Structure
+
+## Описание
+
+Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная страница (`PublicView`) показывает текущее количество пользователей. Админка (`UsersAdminView`) — CRUD пользователей. Авторизация через JWT в `localStorage`.
+
+## Ключевые файлы
+
+| Файл | Роль |
+|------|------|
+| `apps/frontend/src/main.ts` | Vue app creation + router mount |
+| `apps/frontend/src/App.vue` | Root component: header with nav + router-view |
+| `apps/frontend/src/router/index.ts` | Hash router: public + auth routes |
+| `apps/frontend/src/api/auth.ts` | Axios client for auth endpoints |
+| `apps/frontend/src/api/users.ts` | Axios client for users endpoints |
+| `apps/frontend/src/views/PublicView.vue` | Public page (user count) |
+| `apps/frontend/src/views/LoginView.vue` | Login form |
+| `apps/frontend/src/views/admin/ManageUsersView.vue` | Users admin CRUD |
+| `apps/frontend/src/layouts/AdminLayout.vue` | Admin layout with nav |
+| `apps/frontend/src/composables/useAuth.ts` | Auth state: login/logout/checkAuth |
+| `apps/frontend/src/style.css` | Tailwind directives |
+
+## Роуты
+
+| Path | Component | Auth required |
+|------|-----------|---------------|
+| `/` | `PublicView` | No |
+| `/login` | `LoginView` | No |
+| `/admin` | `UsersAdminView` (via AdminLayout) | Yes |
+
+## API Clients
+
+### auth.ts
+
+- `login(login, password)` → `{ access_token }`
+- `getMe(token)` → `{ id, login }`
+
+### users.ts
+
+- `getUsers(token)` → `User[]`
+- `createUser(token, data)` → `User`
+- `updateUser(token, id, data)` → `User`
+- `deleteUser(token, id)` → `void`
+- `getUserCount()` → `{ count }` (public, no auth)
+
+## Auth Flow
+
+1. User enters credentials → `POST /api/auth/login`
+2. Token saved to `localStorage('auth_token')`
+3. `useAuth()` composable provides: `token`, `user`, `login()`, `logout()`, `checkAuth()`
+4. Axios interceptor attaches `Authorization: Bearer <token>` automatically
+5. Route guard redirects unauthenticated users to `/login`
+
+## Common issues
+
+1. **Hash router**: URLs use `#` (e.g. `http://localhost:5173/#/admin`)
+2. **Token not attached**: check axios interceptor in `api/auth.ts`
+3. **401 on protected routes**: token expired (24h), re-login

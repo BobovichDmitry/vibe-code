@@ -1,0 +1,30 @@
+version: '3.8'
+
+# Run e2e tests against the app.
+# The app must already be running (locally or in Docker) and Chrome must be
+# running with --remote-debugging-port on the host.
+#
+# Usage:
+#   1. Start app: docker compose -f docker-compose.yml up -d
+#   2. Start Chrome on host with CDP: chrome.exe --remote-debugging-port=9222
+#   3. Run tests: docker compose -f docker-compose.e2e.yml up e2e
+#
+
+services:
+  e2e:
+    image: mcr.microsoft.com/playwright:v1.48.0-jammy
+    working_dir: /app/e2e
+    volumes:
+      - ../e2e:/app/e2e
+      - /tmp/.X11-unix:/tmp/.X11-unix  # X11 forwarding if needed
+    environment:
+      # Point to the running app (Docker service name or host IP)
+      E2E_BASE_URL: ${E2E_BASE_URL:-http://host.docker.internal:3000}
+      E2E_API_URL: ${E2E_API_URL:-http://host.docker.internal:3000/api}
+      # Remote Chrome CDP connection
+      BROWSER_PORT: ${BROWSER_PORT:-9222}
+      REMOTE_CHROME_HOST: ${REMOTE_CHROME_HOST:-host.docker.internal}
+    command: npx playwright test --ui
+    # Port to access Playwright UI locally: http://localhost:8080
+    ports:
+      - "8080:8080"
