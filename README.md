@@ -1,4 +1,4 @@
-# Meeting UI — Шаблон Nest.js + Vue 3 приложения
+# VibeSetup UI — Шаблон Nest.js + Vue 3 приложения
 
 Шаблон с авторизацией, админ-панелью управления пользователями и публичной страницей.
 
@@ -7,7 +7,7 @@
 ## Структура
 
 ```
-meeting-ui/
+vibe-setup-ui/
 ├── apps/
 │   ├── backend/          # Nest.js API (/api/auth, /api/users)
 │   └── frontend/         # Vue 3 + Tailwind (SPA)

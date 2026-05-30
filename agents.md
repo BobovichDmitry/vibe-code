@@ -1,11 +1,11 @@
-# Meeting UI — Agent Guide
+# VibeSetup UI — Agent Guide
 
 ## Architecture
 
 **Monorepo** (npm workspaces) with Nest.js backend, Vue.js frontend, Playwright e2e tests. Single Docker container in production — frontend built into Nest.js static.
 
 ```
-meeting-ui/
+vibe-setup-ui/
 ├── apps/
 │   ├── backend/          # Nest.js API (/api/auth, /api/users)
 │   │   ├── src/
@@ -217,7 +217,7 @@ const API_URL = process.env.E2E_API_URL || 'http://localhost:3000/api';
 test('example', async ({ connectedPage }) => {
   await connectedPage.goto(`${BASE_URL}/`);
   // Use full URLs — baseURL doesn't apply with CDP connected pages
-  expect(await connectedPage.locator('h1').first().textContent()).toContain('Meeting UI');
+  expect(await connectedPage.locator('h1').first().textContent()).toContain('VibeSetup UI');
 });
 ```
 

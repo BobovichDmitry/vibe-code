@@ -92,7 +92,7 @@ async function globalSetup() {
       const pkgPath = path.resolve(projectRoot, 'package.json');
       const data = readFileSync(pkgPath, 'utf8');
       const pkg = JSON.parse(data);
-      if (pkg.name === 'meeting-ui') break;
+      if (pkg.name === 'vibe-setup-ui') break;
     } catch {
       // not a package.json, go up
     }

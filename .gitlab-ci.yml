@@ -60,7 +60,7 @@ deploy:main:
   stage: deploy
   variables:
     DEPLOY_HOST: ubuntu@ai.wormsoft.ru
-    DEPLOY_PATH: /home/ubuntu/projects/inside/meeting-ui
+    DEPLOY_PATH: /home/ubuntu/projects/inside/vibe-setup-ui
     APP_IMAGE: "$IMAGE_TAG_LATEST"
   environment:
     name: production

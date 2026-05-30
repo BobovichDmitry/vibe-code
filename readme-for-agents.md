@@ -29,8 +29,8 @@ Clone the repo into a directory on the server. **Preserve the `origin` remote** 
 
 ```bash
 cd /opt
-git clone git@git.obvu.ru:amorev/vibecode-setup.git meeting-ui
-cd meeting-ui
+git clone git@git.obvu.ru:amorev/vibecode-setup.git vibe-setup-ui
+cd vibe-setup-ui
 ```
 
 Verify the remote is set correctly:
@@ -133,14 +133,14 @@ Use `pm2` (recommended for production) or `nohup`:
 **With pm2:**
 ```bash
 npm install -g pm2
-pm2 start npm --name "meeting-ui" -- start:prod
+pm2 start npm --name "vibe-setup-ui" -- start:prod
 pm2 save
 pm2 startup   # auto-start on boot
 ```
 
 **With nohup:**
 ```bash
-nohup npm run start:prod > /var/log/meeting-ui.log 2>&1 &
+nohup npm run start:prod > /var/log/vibe-setup-ui.log 2>&1 &
 ```
 
 ---
@@ -168,7 +168,7 @@ The response from `/api/auth/login` should return `{ "access_token": "..." }`.
 When new versions are pushed to the repository:
 
 ```bash
-cd /opt/meeting-ui
+cd /opt/vibe-setup-ui
 
 # 1. Save current local changes (if any)
 git stash
@@ -190,7 +190,7 @@ npm run build
 
 # 6. Restart the server
 # With pm2:
-pm2 restart meeting-ui
+pm2 restart vibe-setup-ui
 
 # With nohup: find the PID and kill, then restart
 ```
@@ -224,7 +224,7 @@ Add any new variables to your `.env` file.
 ## Architecture Summary
 
 ```
-meeting-ui/
+vibe-setup-ui/
 ├── apps/
 │   ├── backend/              # Nest.js API
 │   │   ├── src/
