@@ -113,35 +113,91 @@ This runs:
 
 ---
 
-## Step 5: Start the Production Server
+## Step 5: Run in Production Mode
 
-```bash
-npm run start:prod
-```
-
-This starts a single Node.js process that:
+`npm run start:prod` starts a single Node.js process (`node dist/main`) that:
 - Serves the backend API at `/api/*`
 - Serves the frontend static files at `/`
 - Handles SPA fallback (routes without `/api` go to `index.html`)
 
 The server listens on the port from `PORT` env variable (default `3000`).
 
-### Running as a background process
+Choose **one** method below to run as a persistent service. The first (systemd) is recommended for Linux servers.
 
-Use `pm2` (recommended for production) or `nohup`:
+### Option A: systemd (recommended)
 
-**With pm2:**
+Create a service file:
+
+```bash
+sudo tee /etc/systemd/system/vibe-setup-ui.service > /dev/null << EOF
+[Unit]
+Description=VibeSetup UI
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/vibe-setup-ui
+ExecStart=/usr/bin/npm run start:prod
+EnvironmentFile=/opt/vibe-setup-ui/apps/backend/.env
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable vibe-setup-ui
+sudo systemctl start vibe-setup-ui
+```
+
+Manage the service:
+
+```bash
+sudo systemctl status vibe-setup-ui       # check status
+sudo systemctl restart vibe-setup-ui       # restart
+sudo journalctl -u vibe-setup-ui -f        # live logs
+sudo journalctl -u vibe-setup-ui --since today  # today's logs
+```
+
+### Option B: pm2
+
 ```bash
 npm install -g pm2
+
+# Start the app
 pm2 start npm --name "vibe-setup-ui" -- start:prod
+
+# Auto-restart on failure (default pm2 behavior)
+# Enable startup on boot
 pm2 save
-pm2 startup   # auto-start on boot
+pm2 startup
+
+# Manage
+pm2 list                  # list processes
+pm2 logs vibe-setup-ui    # live logs
+pm2 restart vibe-setup-ui # restart
+pm2 stop vibe-setup-ui    # stop
+pm2 delete vibe-setup-ui  # remove
 ```
 
-**With nohup:**
+### Option C: nohup (quick & dirty)
+
 ```bash
 nohup npm run start:prod > /var/log/vibe-setup-ui.log 2>&1 &
+echo $! > /var/run/vibe-setup-ui.pid
 ```
+
+To stop: `kill $(cat /var/run/vibe-setup-ui.pid)`
+
+> **Note**: nohup provides no auto-restart. Use systemd or pm2 for production.
 
 ---
 
@@ -189,6 +245,10 @@ npm install
 npm run build
 
 # 6. Restart the server
+
+# With systemd:
+sudo systemctl restart vibe-setup-ui
+
 # With pm2:
 pm2 restart vibe-setup-ui
 
@@ -205,6 +265,68 @@ diff apps/backend/.env.example apps/backend/.env
 ```
 
 Add any new variables to your `.env` file.
+
+---
+
+## Production Checklist
+
+Before considering the deployment done, verify each item:
+
+- [ ] **Node.js >= 20** — `node --version`
+- [ ] **Dependencies installed** — `npm install` completed without errors
+- [ ] **Environment configured** — `apps/backend/.env` exists with custom `JWT_SECRET`, `ADMIN_LOGIN`, `ADMIN_PASSWORD`
+- [ ] **Build successful** — `apps/frontend/dist/index.html` exists, `apps/backend/dist/main.js` exists
+- [ ] **Service running** — `sudo systemctl status vibe-setup-ui` (or `pm2 list`)
+- [ ] **API responds** — `curl http://localhost:3000/api/users/count` returns a number
+- [ ] **Admin login works** — `curl -X POST http://localhost:3000/api/auth/login -H "Content-Type: application/json" -d '{"login":"admin","password":"YOUR_PASSWORD"}'` returns `{ "access_token": "..." }`
+- [ ] **Auto-restart enabled** — systemd: `systemctl is-enabled vibe-setup-ui` returns `enabled`; pm2: `pm2 startup` was run
+- [ ] **Remote is origin** — `git remote -v` shows `git@git.obvu.ru:amorev/vibecode-setup.git`
+
+---
+
+## Monitoring
+
+### systemd
+
+```bash
+# Real-time logs
+sudo journalctl -u vibe-setup-ui -f
+
+# Last 100 lines
+sudo journalctl -u vibe-setup-ui -n 100
+
+# Logs since an hour ago
+sudo journalctl -u vibe-setup-ui --since "1 hour ago"
+
+# Check if service is running
+sudo systemctl is-active vibe-setup-ui
+```
+
+### pm2
+
+```bash
+# Process overview
+pm2 list
+
+# Real-time logs
+pm2 logs vibe-setup-ui
+
+# Resource usage (CPU, memory)
+pm2 monit
+
+# Detailed info
+pm2 show vibe-setup-ui
+```
+
+### nohup
+
+```bash
+# Tail the log
+tail -f /var/log/vibe-setup-ui.log
+
+# Find the process
+ps aux | grep vibe-setup-ui
+```
 
 ---
 
