@@ -2,7 +2,7 @@
 
 ## Описание
 
-TypeORM с двумя подключениями: SQLite (dev) / PostgreSQL (prod). `synchronize: true` для auto-migration. Одна сущность: User (авторизация + управление пользователями).
+TypeORM с двумя подключениями: SQLite (dev) / PostgreSQL (prod). `synchronize: true` для auto-migration. Три сущности: User (авторизация), Settings (Telegram бот) и Reminder (напоминания).
 
 ## Ключевые файлы
 
@@ -11,6 +11,7 @@ TypeORM с двумя подключениями: SQLite (dev) / PostgreSQL (pro
 | `apps/backend/src/database/database.module.ts` | TypeORM config (SQLite/PostgreSQL via DB_TYPE env) |
 | `apps/backend/src/database/reset-db.ts` | DB reset script (drop + recreate) |
 | `apps/backend/src/users/entities/user.entity.ts` | User entity |
+| `apps/backend/src/reminders/entities/reminder.entity.ts` | Reminder entity |
 
 ## Сущности
 
@@ -26,6 +27,26 @@ TypeORM с двумя подключениями: SQLite (dev) / PostgreSQL (pro
 | role | varchar | default 'user', values: 'admin', 'user' |
 | createdAt | datetime | — |
 | updatedAt | datetime | — |
+
+### Reminder
+
+Таблица `reminder` — пользовательские напоминания (одноразовые и регулярные).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| id | int (PK, auto) | — |
+| userId | int (FK → user) | not null, indexed |
+| text | string | not null |
+| scheduledAt | datetime | not null |
+| isRecurring | boolean | default false |
+| weekdays | simple-array (JSON) | nullable, массив чисел 1-7 (1=Пн, 7=Вс) |
+| createdAt | datetime | — |
+| updatedAt | datetime | — |
+
+**Особенности:**
+- `weekdays` хранится как JSON-массив в SQLite (`[2, 4, 6]`) и как `jsonb` в PostgreSQL
+- Связь с `User` — `ManyToOne`, каскадное удаление (`onDelete: 'CASCADE'`)
+- Регулярные напоминания (`isRecurring=true`) игнорируют `scheduledAt` при фильтрации "прошедших"
 
 ## Seeding
 

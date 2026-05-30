@@ -14,10 +14,12 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 | `apps/frontend/src/api/auth.ts` | Axios client for auth endpoints |
 | `apps/frontend/src/api/users.ts` | Axios client for users endpoints |
 | `apps/frontend/src/api/settings.ts` | Axios client for settings endpoints |
+| `apps/frontend/src/api/reminders.ts` | Axios client for reminders endpoints |
 | `apps/frontend/src/views/PublicView.vue` | Public page (user count) |
 | `apps/frontend/src/views/LoginView.vue` | Login form |
 | `apps/frontend/src/views/admin/ManageUsersView.vue` | Users admin CRUD |
 | `apps/frontend/src/views/admin/TelegramBotView.vue` | Telegram bot settings page |
+| `apps/frontend/src/views/RemindersView.vue` | Reminders list + create/edit modal |
 | `apps/frontend/src/layouts/AdminLayout.vue` | Admin layout with nav |
 | `apps/frontend/src/composables/useAuth.ts` | Auth state: login/logout/checkAuth |
 | `apps/frontend/src/style.css` | Tailwind directives |
@@ -30,6 +32,7 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 | `/login` | `LoginView` | No |
 | `/admin` | `ManageUsersView` (via AdminLayout) | Yes |
 | `/admin/telegram-bot` | `TelegramBotView` (via AdminLayout) | Yes |
+| `/reminders` | `RemindersView` | Yes |
 
 ## API Clients
 
@@ -51,6 +54,29 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 - `getSettings()` → `{ telegramBotToken, telegramChatId }`
 - `updateSettings(data)` → `{ telegramBotToken, telegramChatId }`
 - `sendTestMessage()` → `{ ok, message }`
+
+### reminders.ts
+
+- `getReminders(showPast?)` → `Reminder[]` (showPast=false по умолчанию)
+- `getReminder(id)` → `Reminder`
+- `createReminder(data)` → `Reminder`
+- `updateReminder(id, data)` → `Reminder`
+- `deleteReminder(id)` → `void`
+- `toggleReminders(ids, enabled)` → `void` (массовое включение/выключение)
+
+Интерфейсы:
+- `Reminder`: `{ id, text, scheduledAt, isRecurring, weekdays, createdAt, updatedAt }`
+- `CreateReminderRequest`: `{ text, scheduledAt, isRecurring?, weekdays? }`
+- `UpdateReminderRequest`: `{ text?: string, scheduledAt?: string, isRecurring?: boolean, weekdays?: number[] }`
+
+## RemindersView
+
+Страница `/reminders` — управление напоминаниями текущего пользователя:
+- **Список**: будущие одноразовые + все регулярные напоминания. Чекбокс "Показать прошедшие" показывает все
+- **Создание/редактирование**: модальное окно с полями текст, дата, время, чекбокс "Регулярное", кнопки дней недели (Пн-Вс)
+- **Удаление**: кнопка при наведении на карточку напоминания
+- **Форматирование**: даты через `Intl.DateTimeFormat('ru-RU')`, время HH:mm, дни недели как "Пн, Вт, Ср"
+- **Редактирование**: `openEdit()` использует `nextTick()` для корректной реактивности weekdays при `v-show`
 
 ## Auth Flow
 

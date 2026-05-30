@@ -7,7 +7,7 @@
 ```
 vibe-setup-ui/
 ├── apps/
-│   ├── backend/          # Nest.js API (/api/auth, /api/users)
+│   ├── backend/          # Nest.js API (/api/auth, /api/users, /api/reminders)
 │   │   ├── src/
 │   │   │   ├── main.ts                 # Entry, global prefix 'api', SPA serve
 │   │   │   ├── app.module.ts           # Root module, seeds DB on startup
@@ -23,14 +23,24 @@ vibe-setup-ui/
 │   │   │       ├── users.controller.ts
 │   │   │       ├── users.service.ts
 │   │   │       └── users.module.ts
+│   │   │   └── reminders/              # Reminder CRUD (per-user)
+│   │   │       ├── entities/reminder.entity.ts
+│   │   │       ├── reminders.controller.ts
+│   │   │       ├── reminders.service.ts
+│   │   │       ├── reminders.module.ts
+│   │   │       └── dto/
+│   │   │           ├── create-reminder.dto.ts
+│   │   │           └── update-reminder.dto.ts
 │   │   └── .env                        # DB_TYPE, DB_* settings, PORT
 │   └── frontend/         # Vue 3 + Tailwind (SPA)
 │       ├── src/
 │       │   ├── api/auth.ts              # Axios client for auth
 │       │   ├── api/users.ts             # Axios client for users
+│       │   ├── api/reminders.ts         # Axios client for reminders
 │       │   ├── components/              # Shared components
 │       │   ├── views/PublicView.vue     # Public page (user count)
 │       │   ├── views/LoginView.vue      # Login form
+│       │   ├── views/RemindersView.vue  # Reminders list + create/edit
 │       │   ├── views/admin/ManageUsersView.vue  # Users CRUD
 │       │   ├── layouts/AdminLayout.vue  # Admin layout
 │       │   ├── router/index.ts          # Hash router
@@ -62,6 +72,7 @@ vibe-setup-ui/
 │       ├── auth-structure.md
 │       ├── database-structure.md
 │       ├── frontend-structure.md
+│       ├── reminders.md
 │       ├── admin-panel.md
 │       └── e2e-testing-structure.md
 ├── scripts/
@@ -159,6 +170,7 @@ When debugging a problem, read the logs instead:
 8. **Hash router**: Vue uses `createWebHashHistory` to avoid server-side route config for SPA.
 
 9. **Seeding**: First admin created automatically on empty DB (from `ADMIN_LOGIN` / `ADMIN_PASSWORD` env vars).
+10. **Reminders per user**: Each reminder belongs to a user (FK userId). Users can only see/edit their own reminders. Recurring reminders always shown in "upcoming" regardless of `scheduledAt`.
 
 ## API Endpoints
 
@@ -180,6 +192,25 @@ When debugging a problem, read the logs instead:
 | PATCH | `/api/users/:id` | Update user (admin only) |
 | DELETE | `/api/users/:id` | Delete user (admin only) |
 | GET | `/api/users/count` | User count (public, no auth) |
+
+### Settings
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/settings` | Telegram bot settings (auto-seed) (JWT required) |
+| PATCH | `/api/settings` | Update settings (JWT required) |
+| POST | `/api/settings/send-test` | Send test message to Telegram (JWT required) |
+
+### Reminders
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/reminders` | User's reminders (future + recurring) (JWT required) |
+| GET | `/api/reminders?showPast=true` | All reminders including past (JWT required) |
+| GET | `/api/reminders/:id` | Single reminder (JWT required) |
+| POST | `/api/reminders` | Create reminder (JWT required) |
+| PATCH | `/api/reminders/:id` | Update reminder (JWT required) |
+| DELETE | `/api/reminders/:id` | Delete reminder (JWT required) |
 
 ## Docker
 

@@ -2,7 +2,7 @@
 
 ## Описание
 
-Nest.js API с глобальным префиксом `/api`. Три модуля: `AuthModule` (JWT авторизация), `UsersModule` (CRUD пользователей) и `SettingsModule` (настройки Telegram бота). База данных: SQLite (dev) / PostgreSQL (prod) через TypeORM.
+Nest.js API с глобальным префиксом `/api`. Четыре модуля: `AuthModule` (JWT авторизация), `UsersModule` (CRUD пользователей), `SettingsModule` (настройки Telegram бота) и `RemindersModule` (управление напоминаниями). База данных: SQLite (dev) / PostgreSQL (prod) через TypeORM.
 
 ## Ключевые файлы
 
@@ -13,6 +13,7 @@ Nest.js API с глобальным префиксом `/api`. Три модул
 | `apps/backend/src/auth/` | JWT auth module |
 | `apps/backend/src/users/` | User CRUD module |
 | `apps/backend/src/settings/` | Telegram bot settings module |
+| `apps/backend/src/reminders/` | Reminders CRUD module |
 | `apps/backend/src/database/database.module.ts` | TypeORM config (SQLite/PostgreSQL) |
 
 ## API Endpoints
@@ -54,6 +55,20 @@ Nest.js API с глобальным префиксом `/api`. Три модул
 **Settings update request**: `{ telegramBotToken?: string, telegramChatId?: string }` (обязательные — нет, пустая строка очищает поле)
 **Send-test response**: `{ ok: boolean, message: string }`
 
+### Reminders
+
+| Method | Endpoint | Auth | Описание |
+|--------|----------|------|----------|
+| GET | `/api/reminders` | JWT | Список напоминаний текущего пользователя (будущие одноразовые + все регулярные) |
+| GET | `/api/reminders?showPast=true` | JWT | Все напоминания (включая прошедшие) |
+| GET | `/api/reminders/:id` | JWT | Одно напоминание |
+| POST | `/api/reminders` | JWT | Создать напоминание |
+| PATCH | `/api/reminders/:id` | JWT | Обновить напоминание |
+| DELETE | `/api/reminders/:id` | JWT | Удалить напоминание |
+
+**Create reminder request**: `{ text: string, scheduledAt: string (ISO), isRecurring?: boolean, weekdays?: number[] (1-7) }`
+**Reminder response**: `{ id, userId, text, scheduledAt, isRecurring, weekdays, createdAt, updatedAt }`
+
 ## Структура модулей
 
 ### AuthModule
@@ -83,6 +98,21 @@ Nest.js API с глобальным префиксом `/api`. Три модул
 - Отправка идёт через `POST https://api.telegram.org/bot<token>/sendMessage` с `chat_id` и `text: 'тест'`
 - Если токен или Chat ID не установлены — возвращается `{ ok: false, message: '...' }` без вызова Telegram API
 
+### RemindersModule
+
+- `reminders.service.ts` — `findAll(userId, showPast)`, `findOne(id, userId)`, `create(userId, data)`, `update(id, userId, data)`, `remove(id, userId)`
+- `reminders.controller.ts` — CRUD endpoints, все под `@UseGuards(JwtAuthGuard)`
+- `entities/reminder.entity.ts` — Reminder table (text, scheduledAt, isRecurring, weekdays, userId FK)
+- `dto/create-reminder.dto.ts` — `{ text, scheduledAt, isRecurring?, weekdays? }` с `@Type(() => Date)` и `@Transform` для weekdays
+- `dto/update-reminder.dto.ts` — `partialType(CreateReminderDto)`
+
+**Особенности RemindersModule:**
+- `findAll()` без `showPast` возвращает будущие одноразовые + все регулярные напоминания
+- `findAll()` с `showPast=true` возвращает все напоминания пользователя
+- `weekdays` — массив чисел 1-7 (1=Пн, 7=Вс), nullable, хранится как simple-array в БД
+- DTO использует `class-transformer` для корректной десериализации `scheduledAt` (Date из ISO-строки) и `weekdays` (числа из строк)
+- Доступ к данным изолирован по `userId` — пользователь видит только свои напоминания
+
 ## Auth Guard
 
 Все user endpoints защищены `@UseGuards(JwtAuthGuard)`. Guard извлекает user из JWT payload (`sub` = user.id). Публичные маршруты помечены `@Public()`.
@@ -100,6 +130,7 @@ Nest.js API с глобальным префиксом `/api`. Три модул
 **Сущности:**
 - `user` — пользователи (login, passwordHash, role, createdAt, updatedAt)
 - `settings` — настройки Telegram (telegramBotToken, telegramChatId, createdAt, updatedAt)
+- `reminder` — напоминания (userId FK, text, scheduledAt, isRecurring, weekdays, createdAt, updatedAt)
 
 ## Common issues
 
