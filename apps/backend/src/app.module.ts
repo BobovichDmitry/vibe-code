@@ -2,6 +2,7 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { SettingsModule } from './settings/settings.module';
 import { UsersService } from './users/users.service';
 
 @Module({
@@ -9,6 +10,7 @@ import { UsersService } from './users/users.service';
     DatabaseModule,
     AuthModule,
     UsersModule,
+    SettingsModule,
   ],
 })
 export class AppModule implements OnModuleInit {
@@ -24,7 +26,7 @@ export class AppModule implements OnModuleInit {
 
   private async seedAdmin() {
     const count = await this.usersService.count();
-    if (count > 0) return;
+    if (count.total > 0) return;
 
     const login = process.env.ADMIN_LOGIN || 'admin';
     const password = process.env.ADMIN_PASSWORD || 'admin';

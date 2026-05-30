@@ -13,9 +13,11 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 | `apps/frontend/src/router/index.ts` | Hash router: public + auth routes |
 | `apps/frontend/src/api/auth.ts` | Axios client for auth endpoints |
 | `apps/frontend/src/api/users.ts` | Axios client for users endpoints |
+| `apps/frontend/src/api/settings.ts` | Axios client for settings endpoints |
 | `apps/frontend/src/views/PublicView.vue` | Public page (user count) |
 | `apps/frontend/src/views/LoginView.vue` | Login form |
 | `apps/frontend/src/views/admin/ManageUsersView.vue` | Users admin CRUD |
+| `apps/frontend/src/views/admin/TelegramBotView.vue` | Telegram bot settings page |
 | `apps/frontend/src/layouts/AdminLayout.vue` | Admin layout with nav |
 | `apps/frontend/src/composables/useAuth.ts` | Auth state: login/logout/checkAuth |
 | `apps/frontend/src/style.css` | Tailwind directives |
@@ -26,7 +28,8 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 |------|-----------|---------------|
 | `/` | `PublicView` | No |
 | `/login` | `LoginView` | No |
-| `/admin` | `UsersAdminView` (via AdminLayout) | Yes |
+| `/admin` | `ManageUsersView` (via AdminLayout) | Yes |
+| `/admin/telegram-bot` | `TelegramBotView` (via AdminLayout) | Yes |
 
 ## API Clients
 
@@ -37,11 +40,17 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 
 ### users.ts
 
-- `getUsers(token)` → `User[]`
-- `createUser(token, data)` → `User`
-- `updateUser(token, id, data)` → `User`
-- `deleteUser(token, id)` → `void`
-- `getUserCount()` → `{ count }` (public, no auth)
+- `getUsers()` → `PublicUser[]`
+- `createUser(data)` → `PublicUser`
+- `updateUser(id, data)` → `PublicUser`
+- `deleteUser(id)` → `void`
+- `getUserCount()` → `{ total, adminCount }` (public, no auth)
+
+### settings.ts
+
+- `getSettings()` → `{ telegramBotToken, telegramChatId }`
+- `updateSettings(data)` → `{ telegramBotToken, telegramChatId }`
+- `sendTestMessage()` → `{ ok, message }`
 
 ## Auth Flow
 

@@ -2,7 +2,7 @@
 
 ## Описание
 
-Nest.js API с глобальным префиксом `/api`. Два модуля: `AuthModule` (JWT авторизация) и `UsersModule` (CRUD пользователей, только для admin). База данных: SQLite (dev) / PostgreSQL (prod) через TypeORM.
+Nest.js API с глобальным префиксом `/api`. Три модуля: `AuthModule` (JWT авторизация), `UsersModule` (CRUD пользователей) и `SettingsModule` (настройки Telegram бота). База данных: SQLite (dev) / PostgreSQL (prod) через TypeORM.
 
 ## Ключевые файлы
 
@@ -12,6 +12,7 @@ Nest.js API с глобальным префиксом `/api`. Два модул
 | `apps/backend/src/app.module.ts` | Root module: imports AuthModule, UsersModule, DatabaseModule |
 | `apps/backend/src/auth/` | JWT auth module |
 | `apps/backend/src/users/` | User CRUD module |
+| `apps/backend/src/settings/` | Telegram bot settings module |
 | `apps/backend/src/database/database.module.ts` | TypeORM config (SQLite/PostgreSQL) |
 
 ## API Endpoints
@@ -41,6 +42,18 @@ Nest.js API с глобальным префиксом `/api`. Два модул
 **Create user request**: `{ login: string, password: string, role?: 'admin' | 'user' }`
 **User response**: `{ id, login, role, createdAt, updatedAt }` (no passwordHash)
 
+### Settings
+
+| Method | Endpoint | Auth | Описание |
+|--------|----------|------|----------|
+| GET | `/api/settings` | JWT | Получить настройки Telegram бота (автосоздание строки если нет) |
+| PATCH | `/api/settings` | JWT | Обновить настройки (частичное обновление) |
+| POST | `/api/settings/send-test` | JWT | Отправить тестовое сообщение «тест» в Telegram |
+
+**Settings response**: `{ telegramBotToken: string \| null, telegramChatId: string \| null }`
+**Settings update request**: `{ telegramBotToken?: string, telegramChatId?: string }` (обязательные — нет, пустая строка очищает поле)
+**Send-test response**: `{ ok: boolean, message: string }`
+
 ## Структура модулей
 
 ### AuthModule
@@ -57,6 +70,19 @@ Nest.js API с глобальным префиксом `/api`. Два модул
 - `users.controller.ts` — CRUD endpoints + `GET /users/count` (public)
 - `entities/user.entity.ts` — User table (login, passwordHash, role, createdAt, updatedAt)
 
+### SettingsModule
+
+- `settings.service.ts` — `get()` (autoseed), `update()`, `sendTestMessage()` (fetch к Telegram Bot API)
+- `settings.controller.ts` — `GET /settings`, `PATCH /settings`, `POST /settings/send-test`
+- `entities/settings.entity.ts` — Settings table (telegramBotToken, telegramChatId, createdAt, updatedAt)
+- `dto/update-settings.dto.ts` — `{ telegramBotToken?, telegramChatId? }` с `@IsOptional()` + `@IsString()`
+
+**Особенности SettingsModule:**
+- Таблица `settings` — singleton: одна строка, создаётся автоматически при первом запросе `GET /settings`
+- `sendTestMessage()` использует нативный `fetch()` (Node 24), не требует дополнительных зависимостей
+- Отправка идёт через `POST https://api.telegram.org/bot<token>/sendMessage` с `chat_id` и `text: 'тест'`
+- Если токен или Chat ID не установлены — возвращается `{ ok: false, message: '...' }` без вызова Telegram API
+
 ## Auth Guard
 
 Все user endpoints защищены `@UseGuards(JwtAuthGuard)`. Guard извлекает user из JWT payload (`sub` = user.id). Публичные маршруты помечены `@Public()`.
@@ -70,6 +96,10 @@ Nest.js API с глобальным префиксом `/api`. Два модул
 - TypeORM `synchronize: true` (auto-migrate)
 - SQLite for dev: `DB_TYPE=sqlite`, `DB_SQLITE_PATH=./data/database.sqlite`
 - PostgreSQL for prod: `DB_TYPE=postgres`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`
+
+**Сущности:**
+- `user` — пользователи (login, passwordHash, role, createdAt, updatedAt)
+- `settings` — настройки Telegram (telegramBotToken, telegramChatId, createdAt, updatedAt)
 
 ## Common issues
 

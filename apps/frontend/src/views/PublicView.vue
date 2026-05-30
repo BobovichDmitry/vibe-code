@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { getUserCount } from '@/api/users';
+import { getUserCount, type UserCountResponse } from '@/api/users';
 
-const userCount = ref<number>(0);
+const userCount = ref<UserCountResponse>({ total: 0, adminCount: 0 });
 const loading = ref(true);
 const error = ref<string | null>(null);
 
@@ -43,10 +43,14 @@ onMounted(async () => {
           {{ error }}
         </div>
 
-        <div v-else class="mt-8">
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-900/50">
+        <div v-else class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center dark:border-slate-800 dark:bg-slate-900/50">
             <p class="text-sm text-slate-500 dark:text-slate-400">Всего пользователей</p>
-            <p class="mt-2 text-5xl font-bold text-slate-950 dark:text-white">{{ userCount }}</p>
+            <p class="mt-2 text-5xl font-bold text-slate-950 dark:text-white">{{ userCount.total }}</p>
+          </div>
+          <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center dark:border-slate-800 dark:bg-slate-900/50">
+            <p class="text-sm text-slate-500 dark:text-slate-400">Администраторов</p>
+            <p class="mt-2 text-5xl font-bold text-brand-600 dark:text-brand-500">{{ userCount.adminCount }}</p>
           </div>
         </div>
 

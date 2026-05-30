@@ -25,8 +25,13 @@ export const getUsers = async (): Promise<PublicUser[]> => {
   return response.data;
 };
 
-export const getUserCount = async (): Promise<number> => {
-  const response = await api.get<number>('/api/users/count');
+export interface UserCountResponse {
+  total: number;
+  adminCount: number;
+}
+
+export const getUserCount = async (): Promise<UserCountResponse> => {
+  const response = await api.get<UserCountResponse>('/api/users/count');
   return response.data;
 };
 

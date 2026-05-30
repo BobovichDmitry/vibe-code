@@ -85,8 +85,10 @@ export class UsersService {
     }
   }
 
-  async count(): Promise<number> {
-    return this.usersRepo.count();
+  async count(): Promise<{ total: number; adminCount: number }> {
+    const total = await this.usersRepo.count();
+    const adminCount = await this.usersRepo.count({ where: { role: 'admin' } });
+    return { total, adminCount };
   }
 
   /** Find user by login for JWT validation */

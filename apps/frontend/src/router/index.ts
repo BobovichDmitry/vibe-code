@@ -34,6 +34,11 @@ const router = createRouter({
           name: 'admin-users',
           component: () => import('@/views/admin/ManageUsersView.vue'),
         },
+        {
+          path: 'telegram-bot',
+          name: 'admin-telegram-bot',
+          component: () => import('@/views/admin/TelegramBotView.vue'),
+        },
       ],
     },
   ],
