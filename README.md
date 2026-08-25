@@ -206,9 +206,11 @@ SSH_USER=root
 SSH_PASSWORD=********
 ```
 
-После этого инструменты `ssh-connect` (включая SFTP-операции) доступны агенту — можно выполнять команды на сервере и передавать файлы без ручного SSH. Пакет `ssh-mcp` подтягивается через `npx` автоматически.
+После этого инструменты `ssh-connect` (включая SFTP-операции `sftp-upload`/`sftp-download`) доступны агенту — можно выполнять команды на сервере и передавать файлы без ручного SSH. Пакет `ssh-mcp` v2 подтягивается через `npx` автоматически.
 
-> Для key-based auth замените в `scripts/ssh.sh` парольную передачу на ssh-ключ или используйте ssh-agent.
+> **ssh-mcp v2:** пароль передаётся через env-вару `SSH_MCP_PASSWORD` (не через CLI — v2 убрал `--password`). Скрипт мапит `SSH_PASSWORD` → `SSH_MCP_PASSWORD`. Approval-гейт отключён (`--disableApproval`), чтобы агент работал автономно (pi MCP-адаптер не поддерживает elicitation); policy-engine и forbidden-list (`rm -rf /` и т.п.) всё равно действуют.
+>
+> Для key-based auth замените в `scripts/ssh.sh` парольную передачу на `--key=/path/to/key` или используйте ssh-agent (`SSH_AUTH_SOCK`). Для не-root пользователя с sudo — добавьте `--group=dev` (иначе `privileged-command` запрещён на prod-tier).
 
 ## Очередь задач (tasks/)
 
