@@ -51,3 +51,59 @@
 - (Если есть локальный postgres) `DB_TYPE=postgres DB_HOST=... npm run db:recreate` → `npm run migration:generate -- src/migrations/_check` → «No changes»; удалить `_check`.
 - `npm run build:backend` → `ls apps/backend/dist/migrations` содержит скомпилированные миграции.
 - dev-сервер с `DB_SYNCHRONIZE=true` (по умолчанию) стартует без запуска миграций (пользователь проверит).
+
+## Реализация (2025-01-25)
+
+### Что сделано
+
+Реализована двухрежимная БД: dev (`synchronize: true`) / prod (миграции). Режим переключается одной env-переменной `DB_SYNCHRONIZE`.
+
+- Создан `apps/backend/src/database/entities.ts` — единый `ENTITIES` (UserEntity), общий для Nest-модуля, DataSource и reset-db.
+- `database.module.ts`: `synchronize = parseBooleanEnv(DB_SYNCHRONIZE, true)`; `migrationsRun = !synchronize`; `migrations` glob `join(__dirname, '..', 'migrations', '*.{ts,js}')`.
+- Создан `apps/backend/src/data-source.ts` — standalone DataSource для TypeORM CLI (`synchronize:false`, `migrationsRun:false`, оба диалекта).
+- Создан `apps/backend/src/migrations/1740613433000-InitSchema.ts` — baseline-миграция (таблица `user`, Table API, диалект-агностик).
+- Создан `apps/backend/src/database/recreate-db.ts` — `db:recreate` (drop + накат миграций, отказывает на дефолтном dev-SQLite).
+- `reset-db.ts` — переделан на общий `ENTITIES` (вместо хардкода UserEntity).
+- `apps/backend/package.json`: добавлены скрипты `typeorm`, `migration:generate`, `migration:create`, `migration:run`, `migration:revert`, `db:recreate`.
+- Root `package.json`: зеркально `migration:*` / `db:recreate` через `--workspace=apps/backend`.
+- `apps/backend/.env`: добавлен `DB_SYNCHRONIZE=true` (dev).
+- `docker/env` / `docker/.env.example`: добавлен `DB_SYNCHRONIZE=false` (prod).
+- `e2e/.env`: добавлен `DB_SYNCHRONIZE=true` (явно, e2e остаётся на synchronize).
+- `AGENTS.md`: добавлен `DB_SYNCHRONIZE` в таблицу env; обновлён пункт 3 Key Design Decisions; добавлены миграционные скрипты в таблицу Build & Prod.
+- Создан `docs/migrations.md`; обновлены `docs/areas/database-structure.md`, `docs/deployment.md`, `docs/GETTING_STARTED.md`.
+
+### Изменённые файлы
+
+- `apps/backend/src/database/entities.ts` (новый)
+- `apps/backend/src/database/database.module.ts` (изменён)
+- `apps/backend/src/database/reset-db.ts` (изменён)
+- `apps/backend/src/database/recreate-db.ts` (новый)
+- `apps/backend/src/data-source.ts` (новый)
+- `apps/backend/src/migrations/1740613433000-InitSchema.ts` (новый)
+- `apps/backend/.env` (изменён)
+- `apps/backend/package.json` (изменён — только скрипты)
+- `package.json` (изменён — root)
+- `docker/env` (изменён)
+- `docker/.env.example` (изменён)
+- `e2e/.env` (изменён)
+- `AGENTS.md` (изменён)
+- `docs/migrations.md` (новый)
+- `docs/areas/database-structure.md` (изменён)
+- `docs/deployment.md` (изменён)
+- `docs/GETTING_STARTED.md` (изменён)
+
+### Как проверено
+
+- `cd apps/backend && npx tsc --noEmit` — без ошибок.
+- `cd apps/frontend && npx vue-tsc --noEmit` — без ошибок.
+- `npm run build:backend` — успешно, `dist/migrations/` содержит скомпилированную baseline-миграцию.
+- `migration:run` на тестовом SQLite (`data/test-mig.sqlite`) — накатывает baseline без ошибок.
+- `migration:revert` — откатывает baseline без ошибок.
+- Тестовая БД удалена после проверки.
+- Prod-prep цикл (db:recreate + migration:generate «No changes») на PostgreSQL — не запускался (нет локального postgres); отметить для проверки при деплое (задача 05).
+
+### Остаточные риски
+
+- Prod-prep цикл (`db:recreate` → `migration:generate` → «No changes») проверен только на SQLite, не на PostgreSQL. Рекомендуется проверить при деплое (задача 05).
+- `apps/backend/package.json` в рабочем дереве содержит чужую правку (`node-cron` зависимость) — НЕ закоммичена, оставлена в рабочем дереве.
+- Docker-сборка с миграциями не проверена end-to-end (требует Docker; nest build компилирует миграции в `dist/migrations/`).
