@@ -88,3 +88,55 @@ Ansible запускается именно на сервере → `inventory` 
 - В шаблоне env есть `DB_SYNCHRONIZE=false` (привязка к задаче 03), `VIRTUAL_HOST`/`LETSENCRYPT_HOST` (привязка к Q3=B).
 - Есть `docker/docker-compose.prod.yml` без проброса `5432`, с external-сетью `reverse-proxy` (привязка к Q4=A).
 - dev-серверы/e2e не запускать.
+
+## Реализация (2025-01-26)
+
+### Что сделано
+
+Создана папка `ansible/` со полной структурой для деплоя VibeSetup UI **на целевом сервере** (`ansible_connection=local`):
+
+- `ansible.cfg` — inventory, `host_key_checking=False`, `interpreter_python=/usr/bin/python3`
+- `inventory.ini` — группа `[vibesetup]`, `localhost ansible_connection=local`
+- `group_vars/all.yml` — переменные: `server_ip`, `domain`, `project_dir`, `archive_path`, `proxy_dir`, `db_*`, `jwt_secret`, `admin_*`, `brand_*`, `letsencrypt_email`, `cors_origin` (плейсхолдеры)
+- `vars.example.yml` — пример заполнения (для копирования в `vars.yml` + `ansible-vault`)
+- `playbook.yml` — основной плейбук с тегами `deps`, `proxy`, `deploy`, `healthcheck`
+- `roles/docker/` — установка Docker Engine + compose-plugin (официальный apt-репозиторий Docker, Debian/Ubuntu)
+- `roles/nginx_proxy/` — поднятие общего nginx-proxy + acme-companion (идемпотентно, проверка существования)
+- `roles/app/` — распаковка архива, рендер `docker/env`, `docker compose build`/`up -d`
+- `templates/env.j2` — прод-env: `DB_SYNCHRONIZE=false`, `VIRTUAL_HOST`, `LETSENCRYPT_HOST`/`EMAIL`, `BRAND_TITLE`/`BRAND_FAVICON_URL`, `CORS_ORIGIN=https://{{ domain }}`
+- `templates/compose-proxy.yml.j2` — общий compose для nginx-proxy + acme-companion (external-сеть `reverse-proxy`)
+- `README.md` — пошаговая инструкция (сборка архива, sftp, запуск на сервере, переменные, мульти-проект, логи)
+- `.gitignore` — исключает `vars.yml` и `.vault_pass`
+
+Создан `docker/docker-compose.prod.yml` (вариант A):
+- app + postgres, `5432` **не** пробрасывается наружу
+- external-сеть `reverse-proxy` (nginx-proxy)
+- `VIRTUAL_HOST`/`LETSENCRYPT_HOST`/`LETSENCRYPT_EMAIL` из env
+- PostgreSQL healthcheck
+
+Обновлён `docker/Dockerfile` — комментарий о копировании миграций в `dist/migrations/` (интеграция с задачей 03).
+
+Обновлены `agents.md` (папка `ansible/` в карте проекта, `docker-compose.prod.yml` в Docker-разделе), `docs/deployment.md` и `docs/GETTING_STARTED.md` (раздел «Деплой через ansible»).
+
+### Изменённые файлы
+
+- `ansible/` (новые файлы: ansible.cfg, inventory.ini, group_vars/all.yml, vars.example.yml, playbook.yml, roles/docker/tasks/main.yml, roles/nginx_proxy/tasks/main.yml, roles/app/tasks/main.yml, templates/env.j2, templates/compose-proxy.yml.j2, README.md, .gitignore)
+- `docker/docker-compose.prod.yml` (новый)
+- `docker/Dockerfile` (комментарий о миграциях)
+- `agents.md` (карта проекта + Docker-раздел)
+- `docs/deployment.md` (раздел ansible-деплоя)
+- `docs/GETTING_STARTED.md` (раздел ansible-деплоя)
+
+### Как проверено
+
+- YAML-валидация всех `.yml` файлов через Python `yaml.safe_load_all` — ОК
+- `npx tsc --noEmit` (apps/backend) — без ошибок
+- `npx vue-tsc --noEmit` (apps/frontend) — без ошибок
+- `ansible-playbook --syntax-check` — не выполнен (ansible не установлен локально); синтаксис проверен YAML-парсером, реальная проверка — при первом запуске на сервере
+
+### Остаточные риски
+
+- Ansible не установлен локально — `--syntax-check` не выполнен. Возможны мелкие синтаксические замечания при первом реальном запуске.
+- Jinja2-шаблоны не провалидированы (jinja2 не установлен). Шаблоны используют простую подстановку `{{ var }}`, `{%raw%}{{.DockerTemplate}}{%endraw%}` для экранирования.
+- Роль `app` использует `command` (не `community.docker.docker_compose_v2`) — intentionally, меньше зависимостей на чистом сервере.
+- Реальный деплой на сервере не тестировался (нет сервера).
