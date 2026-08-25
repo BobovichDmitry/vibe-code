@@ -196,21 +196,29 @@ npm run test:e2e:ui                            # UI mode
 
 ```bash
 cp .env.example .env
-# заполнить: SSH_HOST (домен или IP), SSH_PORT, SSH_USER, SSH_PASSWORD
+# заполнить: SSH_HOST (домен или IP), SSH_USER и один из способов аутентификации
 ```
 
-```
-SSH_HOST=app.example.com   # домен или IP целевого сервера
-SSH_PORT=22
+**Вариативная аутентификация** — ключ приоритетнее пароля:
+
+```bash
+# Вариант 1 — по ключу (если ключ запаролен — указать SSH_KEY_PASSPHRASE):
+SSH_HOST=app.example.com
+SSH_USER=root
+SSH_KEY=~/.ssh/id_ed25519          # на Windows: C:/Users/you/.ssh/id_ed25519
+SSH_KEY_PASSPHRASE=********         # опционально, только для запароленного ключа
+
+# Вариант 2 — по паролю (если SSH_KEY не задан):
+SSH_HOST=app.example.com
 SSH_USER=root
 SSH_PASSWORD=********
 ```
 
 После этого инструменты `ssh-connect` (включая SFTP-операции `sftp-upload`/`sftp-download`) доступны агенту — можно выполнять команды на сервере и передавать файлы без ручного SSH. Пакет `ssh-mcp` v2 подтягивается через `npx` автоматически.
 
-> **ssh-mcp v2:** пароль передаётся через env-вару `SSH_MCP_PASSWORD` (не через CLI — v2 убрал `--password`). Скрипт мапит `SSH_PASSWORD` → `SSH_MCP_PASSWORD`. Approval-гейт отключён (`--disableApproval`), чтобы агент работал автономно (pi MCP-адаптер не поддерживает elicitation); policy-engine и forbidden-list (`rm -rf /` и т.п.) всё равно действуют.
+> **ssh-mcp v2:** секреты только через env (v2 убрал `--password` CLI). Скрипт маппит `SSH_PASSWORD` → `SSH_MCP_PASSWORD` (auth=password) и `SSH_KEY_PASSPHRASE` → `SSH_MCP_PASSPHRASE` (auth=key, запароленный ключ); путь ключа передаётся через `--key`. Approval-гейт отключён (`--disableApproval`) для автономной работы агента (pi MCP-адаптер не поддерживает elicitation); policy-engine и forbidden-list (`rm -rf /` и т.п.) всё равно действуют.
 >
-> Для key-based auth замените в `scripts/ssh.sh` парольную передачу на `--key=/path/to/key` или используйте ssh-agent (`SSH_AUTH_SOCK`). Для не-root пользователя с sudo — добавьте `--group=dev` (иначе `privileged-command` запрещён на prod-tier).
+> Для SSH agent (auth=agent, `SSH_AUTH_SOCK`) используйте TOML-конфиг ssh-mcp. Для non-root пользователя с sudo — добавьте `--group=dev` в `scripts/ssh.sh` (иначе `privileged-command` запрещён на prod-tier).
 
 ## Очередь задач (tasks/)
 
