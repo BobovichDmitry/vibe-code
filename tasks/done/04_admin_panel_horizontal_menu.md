@@ -51,3 +51,36 @@
 - `cd apps/frontend && npx vue-tsc --noEmit` — без ошибок.
 - `cd apps/frontend && npm run build:frontend` — собирается.
 - Визуальная проверка — через `@browser-checker` после старта фронтенда пользователем (не запускать самому): шапка с бренд-блоком, горизонтальное меню с иконкой у «Пользователи», переключатель темы работает, тёмная тема корректна.
+## Реализация (2025-01-26)
+
+### Что сделано
+- **Бэкенд:** создан `BrandingModule` + `BrandingController` — публичный эндпоинт `GET /api/branding` (без JWT, `@Public()`), возвращает `{ title, faviconUrl }` из env `BRAND_TITLE` (дефолт `VibeSetup UI`) и `BRAND_FAVICON_URL` (дефолт `/favicon.svg`). Зарегистрирован в `app.module.ts`. В `.env` добавлены переменные.
+- **Фронтенд:** создан composable `useBranding.ts` — singleton (module-level), грузит `/api/branding` один раз на старте (`main.ts` → `loadBranding()`), применяет к `document.title` и `<link rel="icon">`, дефолты на случай ошибки сети. Реактивные `title`/`faviconUrl` используются в шапках.
+- **Фронтенд:** создан компонент `ThemeToggle.vue` — вынесенный из разметки переключатель Light/System/Dark (segmented control `hidden sm:flex` + icon-toggle), переиспользует `useTheme`.
+- **Фронтенд:** `AdminLayout.vue` переработан — бренд-блок (иконка `bg-brand-600` + `title` из `useBranding` + подзаголовок «Admin Panel»), горизонтальное меню `<nav class="flex gap-2 overflow-x-auto">` с иконкой (heroicons outline SVG-path константа `ICON_USERS`) + названием, активный пункт `bg-brand-600 text-white shadow-sm`, неактивный — `border bg-white` + `dark:` варианты, `ThemeToggle` + бейдж логина + «Выйти» справа. `isActive` — `startsWith` для вложенных роутов.
+- **Фронтенд:** `App.vue`, `PublicView.vue`, `LoginView.vue` — используют `useBranding` (единое название продукта).
+- **Tailwind:** палитра `brand` уже присутствует (50/100/500/600/700) и совпадает с референсом — изменений не потребовалось.
+
+### Изменённые файлы
+- `apps/backend/src/branding/branding.controller.ts` (новый)
+- `apps/backend/src/branding/branding.module.ts` (новый)
+- `apps/backend/src/app.module.ts` (импорт BrandingModule)
+- `apps/backend/.env` (BRAND_TITLE, BRAND_FAVICON_URL)
+- `apps/frontend/src/api/branding.ts` (новый)
+- `apps/frontend/src/composables/useBranding.ts` (новый)
+- `apps/frontend/src/components/ThemeToggle.vue` (новый)
+- `apps/frontend/src/layouts/AdminLayout.vue` (рестайл)
+- `apps/frontend/src/App.vue` (useBranding, ThemeToggle)
+- `apps/frontend/src/views/PublicView.vue` (useBranding)
+- `apps/frontend/src/views/LoginView.vue` (useBranding)
+- `apps/frontend/src/main.ts` (loadBranding на старте)
+
+### Как проверено
+- `cd apps/backend && npx tsc --noEmit` — чисто (без ошибок).
+- `cd apps/frontend && npx vue-tsc --noEmit` — чисто (без ошибок).
+- `cd apps/frontend && npm run build` — собирается успешно (97 модулей, 2.45s).
+- dev-сервер/e2e не запускались (по правилам AGENTS.md).
+
+### Остаточные риски
+- Палитра `brand` не имеет оттенков 200/300/400/800/900 — в коде используются `dark:text-brand-400` и `dark:text-brand-300` (в `LoginView.vue`, перенесено из оригинала). Tailwind просто не сгенерирует эти классы — визуально fallback на унаследованный цвет. Не блокирует. Можно дополнить палитру позже.
+- Визуальная проверка (браузер) не проводилась — требуется запуск пользователем + `@browser-checker`.
