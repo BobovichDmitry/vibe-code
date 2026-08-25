@@ -10,6 +10,7 @@ apps/backend/dist/
 .env.local
 .env.*.local
 /.env
+.app.secrets
 
 # IDE
 .idea/
