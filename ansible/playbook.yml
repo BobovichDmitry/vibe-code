@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# Основной плейбук деплоя VibeSetup UI
+# Запускается НА целевом сервере (ansible_connection=local).
+#
+# Теги:
+#   deps       — установка Docker Engine + compose-plugin
+#   proxy      — поднятие общего nginx-proxy + acme-companion (один раз)
+#   deploy     — распаковка архива, env, build/up приложения
+#   healthcheck — проверка здоровья (curl /api/users/count)
+#
+# Полный запуск:   ansible-playbook playbook.yml
+# Только deps:     ansible-playbook playbook.yml --tags deps
+# Только deploy:   ansible-playbook playbook.yml --tags deploy
+# С vars.yml:      ansible-playbook playbook.yml -e @vars.yml
+# =============================================================================
+
+- name: Деплой VibeSetup UI на сервере
+  hosts: localhost
+  connection: local
+  become: true
+
+  roles:
+    - role: docker
+      tags: [deps]
+
+    - role: nginx_proxy
+      tags: [proxy]
+
+    - role: app
+      tags: [deploy]
+
+  tasks:
+    - name: healthcheck — ждать и проверить /api/users/count
+      tags: [healthcheck]
+      block:
+        - name: Подождать 15с перед healthcheck (поднятие контейнеров)
+          ansible.builtin.pause:
+            seconds: 15
+
+        - name: Проверить http://localhost:3000/api/users/count → 200
+          ansible.builtin.uri:
+            url: http://localhost:3000/api/users/count
+            method: GET
+            status_code: 200
+            return_content: true
+          register: health_result
+          retries: 5
+          delay: 5
+
+        - name: Вывести результат healthcheck
+          ansible.builtin.debug:
+            msg: "Healthcheck OK: {{ health_result.json }}"
+
+        - name: Проверить через nginx-proxy (https://{{ domain }}/api/users/count)
+          ansible.builtin.uri:
+            url: "https://{{ domain }}/api/users/count"
+            method: GET
+            status_code: 200
+            return_content: true
+          register: proxy_health
+          retries: 3
+          delay: 10
+          failed_when: false
+
+        - name: Вывести результат прокси-healthcheck
+          ansible.builtin.debug:
+            msg: >
+              Прокси-healthcheck:
+              {% if proxy_health.status is defined and proxy_health.status == 200 %}
+              OK ({{ proxy_health.json }})
+              {% else %}
+              Сертификат ещё не выпущен или DNS не настроен — проверьте позже вручную.
+              {% endif %}

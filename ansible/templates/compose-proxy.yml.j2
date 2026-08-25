@@ -1,0 +1,53 @@
+# =============================================================================
+# Общий docker-compose для nginx-proxy + acme-companion
+# Поднимается один раз на сервере. Сеть reverse-proxy — external,
+# используется всеми проектами-контейнерами на этом сервере.
+# Рендерится ansible-ролью nginx_proxy в {{ proxy_dir }}/compose-proxy.yml
+# =============================================================================
+
+services:
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy:latest
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - nginx_conf:/etc/nginx/conf.d
+      - nginx_vhost:/etc/nginx/vhost.d
+      - nginx_html:/usr/share/nginx/html
+      - nginx_certs:/etc/nginx/certs
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    environment:
+      DEFAULT_HOST: {{ domain }}
+    networks:
+      - reverse-proxy
+
+  acme-companion:
+    image: nginxproxy/acme-companion:latest
+    container_name: nginx-proxy-acme
+    restart: unless-stopped
+    volumes_from:
+      - nginx-proxy
+    volumes:
+      - acme_certs:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      DEFAULT_EMAIL: {{ letsencrypt_email }}
+    depends_on:
+      - nginx-proxy
+    networks:
+      - reverse-proxy
+
+volumes:
+  nginx_conf:
+  nginx_vhost:
+  nginx_html:
+  nginx_certs:
+  acme_certs:
+
+networks:
+  reverse-proxy:
+    name: reverse-proxy
+    driver: bridge

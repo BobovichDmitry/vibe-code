@@ -1,0 +1,47 @@
+# =============================================================================
+# Переменные для ansible-деплоя VibeSetup UI
+# Заполняются перед запуском плейбука. Секреты — плейсхолдеры.
+# Для реальных значений используйте отдельный vars.yml (см. vars.example.yml)
+# и зашифруйте его через ansible-vault.
+# =============================================================================
+
+# --- Сервер ---
+# IP-адрес сервера (для документации/проверок; ansible работает локально)
+server_ip: "127.0.0.1"
+# Домен приложения (должен указывать DNS-записью на server_ip)
+domain: "app.example.com"
+
+# --- Пути ---
+# Куда распаковывается архив исходников
+project_dir: "/opt/vibesetup"
+# Путь к загруженному через sftp архиву tar.gz на сервере
+archive_path: "/opt/vibesetup.tar.gz"
+# Где живёт общий compose для nginx-proxy (один раз на сервере)
+proxy_dir: "/opt/nginx-proxy"
+
+# --- PostgreSQL ---
+db_username: "vibesetup"
+db_password: "CHANGE_ME_strong_password"
+db_name: "vibesetup_db"
+
+# --- JWT ---
+# Сгенерировать: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+jwt_secret: "CHANGE_ME_jwt_secret"
+
+# --- Первый админ (создаётся только на пустой БД) ---
+admin_login: "admin"
+admin_password: "CHANGE_ME_admin_password"
+
+# --- Брендинг (из задачи 04) ---
+brand_title: "VibeSetup UI"
+brand_favicon_url: "/favicon.svg"
+
+# --- Let's Encrypt ---
+letsencrypt_email: "admin@example.com"
+
+# --- Производные (не менять вручную) ---
+cors_origin: "https://{{ domain }}"
+
+# --- Docker compose файлы ---
+prod_compose_file: "docker-compose.prod.yml"
+proxy_compose_file: "compose-proxy.yml"

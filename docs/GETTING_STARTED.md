@@ -143,6 +143,37 @@ docker compose -f docker-compose.nginx-proxy.yml up -d
 
 ---
 
+## Деплой через ansible (запуск на сервере)
+
+Ansible-скрипты в папке `ansible/` запускаются **на целевом сервере**
+(`ansible_connection=local`). Разработчик собирает архив исходников, передаёт
+по sftp, затем на сервере ansible ставит Docker, поднимает nginx-proxy +
+acme-companion, собирает и поднимает приложение.
+
+Полная инструкция: [`ansible/README.md`](../ansible/README.md).
+
+Кратко:
+```bash
+# На ПК: собрать архив
+tar --exclude=node_modules --exclude=dist --exclude=logs --exclude=data \
+    --exclude=.git --exclude=playwright-report --exclude=test-results \
+    -czf vibesetup.tar.gz .
+
+# На ПК: передать по sftp
+sftp root@<server_ip>
+sftp> put vibesetup.tar.gz /opt/
+
+# На сервере: запустить ansible
+cd /opt/vibesetup/ansible
+ansible-playbook playbook.yml -e @vars.yml
+```
+
+nginx-proxy поднимается один раз (тег `proxy`), мульти-проект — через external
+сеть `reverse-proxy`. Прод-конфигурация: `docker/docker-compose.prod.yml`
+(`5432` не наружу, `reverse-proxy` сеть, `VIRTUAL_HOST`/`LETSENCRYPT_*`).
+
+---
+
 ## Структура проекта
 
 ```

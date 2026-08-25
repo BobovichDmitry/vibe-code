@@ -49,6 +49,8 @@ COPY apps/backend/package.json ./apps/backend/
 RUN npm install --omit=dev --no-audit --no-fund
 
 # Copy built artifacts (cheap — no npm install)
+# dist/ includes compiled migrations (dist/migrations/*.js) — required for prod
+# (DB_SYNCHRONIZE=false → Nest.js runs migrationsRun on startup, задача 03)
 COPY --from=backend-builder /app/apps/backend/dist ./apps/backend/dist
 COPY --from=frontend-builder /app/apps/frontend/dist ./apps/frontend/dist
 

@@ -1,0 +1,57 @@
+# =============================================================================
+# Production docker-compose для VibeSetup UI
+# Используется ansible-плейбуком при деплое на сервер.
+#
+# Отличия от docker-compose.yml (dev):
+#   - PostgreSQL порт 5432 НЕ пробрасывается наружу (только внутренняя сеть)
+#   - App подключается к external-сети reverse-proxy (nginx-proxy)
+#   - App объявляет VIRTUAL_HOST / LETSENCRYPT_HOST / LETSENCRYPT_EMAIL
+#   - DB_SYNCHRONIZE=false → миграции при старте (задача 03)
+#   - env_file: ./env (рендерится ansible из templates/env.j2)
+# =============================================================================
+
+services:
+  app:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    # НЕТ проброса портов — nginx-proxy маршрутизирует через reverse-proxy сеть
+    env_file:
+      - ./env
+    environment:
+      # nginx-proxy маршрутизация + Let's Encrypt
+      VIRTUAL_HOST: ${VIRTUAL_HOST}
+      LETSENCRYPT_HOST: ${LETSENCRYPT_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    networks:
+      - default
+      - reverse-proxy
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    # НЕТ проброса 5432 — только внутренняя сеть
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+
+networks:
+  default:
+    driver: bridge
+  reverse-proxy:
+    external: true

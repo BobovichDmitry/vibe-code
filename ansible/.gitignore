@@ -1,0 +1,4 @@
+# Не коммитить vars.yml с реальными секретами
+vars.yml
+# Vault-пароль файл
+.vault_pass

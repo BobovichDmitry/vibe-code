@@ -1,0 +1,42 @@
+# =============================================================================
+# Роль app: распаковка архива, генерация env, build/up приложения
+# =============================================================================
+
+- name: Создать project_dir
+  ansible.builtin.file:
+    path: "{{ project_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Распаковать архив исходников
+  ansible.builtin.unarchive:
+    src: "{{ archive_path }}"
+    dest: "{{ project_dir }}"
+    remote_src: true
+    creates: "{{ project_dir }}/package.json"
+
+- name: Рендерить docker/env из шаблона
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ project_dir }}/docker/env"
+    mode: "0600"
+
+- name: Собрать приложение (docker compose build)
+  ansible.builtin.command: docker compose -f {{ prod_compose_file }} build
+  args:
+    chdir: "{{ project_dir }}/docker"
+  register: app_build
+  changed_when: "'SUCCESSFULLY' in app_build.stderr or 'naming to' in app_build.stderr"
+
+- name: Поднять приложение (docker compose up -d)
+  ansible.builtin.command: docker compose -f {{ prod_compose_file }} up -d
+  args:
+    chdir: "{{ project_dir }}/docker"
+  register: app_up
+  changed_when: "'Started' in app_up.stderr or 'Creating' in app_up.stderr"
+
+- name: Вывести результат deploy
+  ansible.builtin.debug:
+    msg:
+      - "Build: {{ app_build.stderr_lines[-3:] | default(['no output']) }}"
+      - "Up: {{ app_up.stderr_lines[-3:] | default(['no output']) }}"

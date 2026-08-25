@@ -46,10 +46,20 @@ vibe-setup-ui/
 │   └── .env                 # BROWSER_PORT, REMOTE_CHROME_HOST, E2E_*
 ├── docker/
 │   ├── Dockerfile           # Multi-stage: frontend build → backend build → prod
-│   ├── docker-compose.yml   # App + optional PostgreSQL
+│   ├── docker-compose.yml   # Dev: App + PostgreSQL (5432 exposed)
+│   ├── docker-compose.prod.yml  # Prod: App + PostgreSQL (5432 NOT exposed, reverse-proxy network)
 │   ├── docker-compose.e2e.yml  # E2E tests with Playwright UI (:8080)
-│   ├── docker-compose.nginx-proxy.yml  # Prod with nginx-proxy + Let's Encrypt
+│   ├── docker-compose.nginx-proxy.yml  # Prod with nginx-proxy + Let's Encrypt (legacy variant)
 │   └── env                  # Production env template
+├── ansible/                # Ansible-деплой (запуск НА сервере)
+│   ├── ansible.cfg          # inventory, host_key_checking=False
+│   ├── inventory.ini        # localhost, ansible_connection=local
+│   ├── group_vars/all.yml   # Переменные (плейсхолдеры)
+│   ├── vars.example.yml     # Пример заполнения переменных
+│   ├── playbook.yml         # Основной плейбук (tags: deps, proxy, deploy, healthcheck)
+│   ├── roles/               # docker, nginx_proxy, app
+│   ├── templates/           # env.j2, compose-proxy.yml.j2
+│   └── README.md            # Инструкция: sftp архива + запуск на сервере
 ├── docs/                   # Documentation
 │   ├── GETTING_STARTED.md   # Full setup guide (Docker, nginx-proxy, local)
 │   ├── deployment.md        # Deploy, env vars, ports, checklists
@@ -189,21 +199,24 @@ When debugging a problem, read the logs instead:
 ## Docker
 
 ```bash
-# Production (single container)
+# Dev (single container)
 cd docker && docker compose up -d
 
-# With PostgreSQL
-DB_TYPE=postgres docker compose -f docker-compose.yml up -d
+# Production via ansible (запуск НА сервере — см. ansible/README.md)
+# Ansible ставит Docker, поднимает nginx-proxy, собирает и поднимает приложение
+ansible-playbook playbook.yml -e @vars.yml
 
 # E2E tests (Playwright UI on :8080)
 cd docker && docker compose -f docker-compose.e2e.yml up e2e
-
-# Production with nginx-proxy (HTTPS, Let's Encrypt)
-cd docker && cp .env.example .env
-# Edit: DOMAIN, EMAIL, APP_IMAGE, PG_ROOT_PASSWORD
-docker compose -f docker-compose.nginx-proxy.yml pull app
-docker compose -f docker-compose.nginx-proxy.yml up -d
 ```
+
+- **`docker-compose.yml`** (dev): app + PostgreSQL, порт `5432` проброшен наружу.
+- **`docker-compose.prod.yml`** (prod): app + PostgreSQL, `5432` **не** проброшен,
+  external-сеть `reverse-proxy` (nginx-proxy), `VIRTUAL_HOST`/`LETSENCRYPT_*`.
+  Используется ansible-плейбуком. Сборка — на сервере внутри Docker (multi-stage Dockerfile).
+- **nginx-proxy** (`nginxproxy/nginx-proxy` + `nginxproxy/acme-companion`):
+  общий reverse-proxy один раз на сервере (тег `proxy`). Мульти-проект —
+  каждый контейнер подключается к `reverse-proxy` и объявляет свой `VIRTUAL_HOST`.
 
 Dockerfile is multi-stage:
 1. **frontend-builder**: Install frontend deps, `npm run build:frontend`

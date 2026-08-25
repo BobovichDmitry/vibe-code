@@ -1,0 +1,37 @@
+# =============================================================================
+# Роль nginx_proxy: поднятие общего nginx-proxy + acme-companion (один раз)
+# Идемпотентно — проверяет существование перед пересозданием.
+# =============================================================================
+
+- name: Создать директорию proxy_dir
+  ansible.builtin.file:
+    path: "{{ proxy_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Проверить, существует ли контейнер nginx-proxy
+  ansible.builtin.command: docker ps -a --filter name=nginx-proxy --format '{%raw%}{{.Names}}{%endraw%}'
+  register: nginx_proxy_exists
+  changed_when: false
+
+- name: Рендерить compose-proxy.yml
+  ansible.builtin.template:
+    src: compose-proxy.yml.j2
+    dest: "{{ proxy_dir }}/{{ proxy_compose_file }}"
+    mode: "0644"
+  register: proxy_compose_rendered
+
+- name: Поднять nginx-proxy + acme-companion (если ещё не запущен)
+  ansible.builtin.command: docker compose -f {{ proxy_dir }}/{{ proxy_compose_file }} up -d
+  when: nginx_proxy_exists.stdout == "" or proxy_compose_rendered.changed
+  changed_when: true
+
+- name: Проверить, что сеть reverse-proxy существует
+  ansible.builtin.command: docker network inspect reverse-proxy --format '{%raw%}{{.Name}}{%endraw%}'
+  register: reverse_proxy_network
+  changed_when: false
+  failed_when: false
+
+- name: Вывести статус reverse-proxy сети
+  ansible.builtin.debug:
+    msg: "Сеть reverse-proxy: {{ reverse_proxy_network.stdout | default('НЕ найдена') }}"

@@ -111,6 +111,41 @@ npm run start:prod
 | 9222 | Chrome CDP | Только e2e тесты |
 | 8080 | Playwright UI | Только e2e Docker |
 
+## Деплой через ansible (запуск на сервере)
+
+Ansible-скрипты находятся в папке `ansible/` и **запускаются на целевом сервере**
+(не на ПК разработчика). Разработчик только собирает архив исходников и передаёт
+его на сервер по sftp.
+
+Полная инструкция — в [`ansible/README.md`](../ansible/README.md).
+
+### Краткие шаги
+
+1. **На ПК**: собрать архив исходников:
+   ```bash
+   tar --exclude=node_modules --exclude=dist --exclude=logs --exclude=data \
+       --exclude=.git --exclude=playwright-report --exclude=test-results \
+       -czf vibesetup.tar.gz .
+   ```
+2. **На ПК**: передать по sftp: `sftp root@<IP>`, `put vibesetup.tar.gz /opt/`
+3. **На сервере**: `cd /opt/vibesetup/ansible && ansible-playbook playbook.yml -e @vars.yml`
+
+### nginx-proxy (мульти-проект)
+
+Общий `nginxproxy/nginx-proxy` + `nginxproxy/acme-companion` поднимаются один раз
+на сервере (тег `proxy`). Каждый проект-контейнер подключается к external-сети
+`reverse-proxy` и объявляет `VIRTUAL_HOST`/`LETSENCRYPT_HOST`/`LETSENCRYPT_EMAIL`.
+Для второго проекта — тот же `reverse-proxy` + свой `VIRTUAL_HOST`, тег `proxy`
+повторно запускать не нужно.
+
+### docker-compose.prod.yml
+
+Продакшн-конфигурация (`docker/docker-compose.prod.yml`) отличается от dev:
+- PostgreSQL порт `5432` **не** пробрасывается наружу
+- App подключается к external-сети `reverse-proxy`
+- `VIRTUAL_HOST`/`LETSENCRYPT_HOST`/`LETSENCRYPT_EMAIL` для nginx-proxy
+- `DB_SYNCHRONIZE=false` → миграции при старте (задача 03)
+
 ## Частые ошибки
 
 1. **JWT-secret по дефолту** — замените `dev-secret-change-me` на production-ключ.
