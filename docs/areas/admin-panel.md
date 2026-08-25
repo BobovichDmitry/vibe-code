@@ -2,13 +2,15 @@
 
 ## Описание
 
-Защищённая маршрутами часть приложения. AdminLayout с навигацией, ManageUsersView для CRUD пользователей.
+Защищённая маршрутами часть приложения. `AdminLayout` с **левым вертикальным сайдбаром** (по образцу agent-hosted): бренд-блок сверху, вертикальная навигация, внизу — `ThemeToggle`, бейдж логина и кнопка «Выйти». На `< lg` сайдбар открывается бургером как overlay-drawer. `ManageUsersView` — CRUD пользователей.
 
 ## Ключевые файлы
 
 | Файл | Роль |
 |------|------|
-| `apps/frontend/src/layouts/AdminLayout.vue` | Admin layout with nav links |
+| `apps/frontend/src/layouts/AdminLayout.vue` | Admin layout с вертикальным сайдбаром (nav + ThemeToggle + logout) |
+| `apps/frontend/src/components/ThemeToggle.vue` | Переключатель темы Light/System/Dark |
+| `apps/frontend/src/composables/useBranding.ts` | Название продукта/favicon (бренд-блок сайдбара) |
 | `apps/frontend/src/views/admin/ManageUsersView.vue` | Users CRUD table |
 
 ## Маршруты
