@@ -66,6 +66,7 @@ docker compose -f docker-compose.nginx-proxy.yml up -d
 | `CORS_ORIGIN` | `https://app.example.com` | Allowed origins (comma-separated) |
 | `JWT_SECRET` | `dev-secret-change-me` | **Изменить в production!** |
 | `DB_TYPE` | `postgres` | `sqlite` or `postgres` (use postgres in prod) |
+| `DB_SYNCHRONIZE` | `false` | `true` = synchronize (dev), `false` = migrations (prod) |
 | `DB_HOST` | `postgres` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
 | `DB_USERNAME` | `postgres` | PostgreSQL user |
@@ -125,6 +126,8 @@ npm run start:prod
 - [ ] Образ собран и запушен в Container Registry (или `docker compose build` прошёл)
 - [ ] `JWT_SECRET` заменён на production-ключ
 - [ ] `CORS_ORIGIN` установлен на реальный домен
+- [ ] `DB_SYNCHRONIZE=false` (prod-режим — миграции)
+- [ ] Миграции накатываются при старте (проверить `docker compose logs app` — нет ошибок TypeORM)
 - [ ] DNS-запись домена указывает на IP сервера
 - [ ] `docker compose -f docker-compose.nginx-proxy.yml up -d` прошёл без ошибок
 - [ ] PostgreSQL healthcheck прошёл, БД доступна

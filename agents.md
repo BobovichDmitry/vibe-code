@@ -105,7 +105,11 @@ When debugging a problem, read the logs instead:
 | `npm run build` | Both builds |
 | `npm run start:prod` | Production (Nest serves static frontend) |
 | `npm run test:e2e` | Run Playwright tests against running app |
-| `npm run db:reset` | Reset DB (drop + recreate schema) |
+| `npm run db:reset` | Reset DB (dev: drop + synchronize) |
+| `npm run db:recreate` | Recreate DB (prod-prep: drop + миграции) |
+| `npm run migration:run` | Накатить pending-миграции (TypeORM CLI) |
+| `npm run migration:revert` | Откатить последнюю миграцию |
+| `npm run migration:generate -- src/migrations/Name` | Сгенерировать миграцию из diff |
 
 ## Environment Variables
 
@@ -113,6 +117,7 @@ When debugging a problem, read the logs instead:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DB_TYPE` | `sqlite` | `sqlite` or `postgres` |
+| `DB_SYNCHRONIZE` | `true` | `true` = synchronize (dev), `false` = migrations (prod) |
 | `DB_SQLITE_PATH` | `./data/database.sqlite` | SQLite file path |
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |
@@ -146,7 +151,7 @@ When debugging a problem, read the logs instead:
 
 2. **API prefix**: `setGlobalPrefix('api')` + `@Controller('auth')` / `@Controller('users')` — all API routes at `/api/*`.
 
-3. **Database abstraction**: Two connectors (SQLite/PostgreSQL) via `DB_TYPE` env. TypeORM `synchronize: true` for auto-migration. SQLite for local/dev, PostgreSQL for production.
+3. **Database abstraction**: Two connectors (SQLite/PostgreSQL) via `DB_TYPE` env. Two modes: dev uses `synchronize: true` (fast iteration), prod uses migrations (`DB_SYNCHRONIZE=false` → `migrationsRun: true`, auto-run pending at startup). SQLite for local/dev, PostgreSQL for production. Baseline migration (`InitSchema`) creates the full schema in one migration. TypeORM CLI scripts: `migration:generate/run/revert`, `db:recreate`.
 
 4. **E2E via CDP**: Tests connect to an already-running Chrome via `connectOverCDP`. No headless browser — tests run in your actual browser. Launch Chrome with `--remote-debugging-port=9222`.
 

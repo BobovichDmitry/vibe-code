@@ -184,7 +184,9 @@ project/
 | `npm run build` | Build frontend + backend |
 | `npm run start:prod` | Production mode |
 | `npm run test:e2e` | E2E тесты |
-| `npm run db:reset` | Сброс БД |
+| `npm run db:reset` | Сброс БД (dev: synchronize) |
+| `npm run db:recreate` | Пересоздание БД (prod-prep: миграции с нуля) |
+| `npm run migration:run` | Накатить pending-миграции |
 | `npm run create-admin` | CLI: создать админа |
 
 ## Переменные окружения
@@ -194,6 +196,7 @@ project/
 | Variable | Default | Описание |
 |----------|---------|----------|
 | `DB_TYPE` | `sqlite` | `sqlite` или `postgres` |
+| `DB_SYNCHRONIZE` | `true` | `true` = synchronize (dev), `false` = миграции (prod) |
 | `DB_SQLITE_PATH` | `./data/database.sqlite` | SQLite путь |
 | `DB_HOST` | `localhost` | PostgreSQL host |
 | `DB_PORT` | `5432` | PostgreSQL port |

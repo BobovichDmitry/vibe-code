@@ -22,7 +22,12 @@
     "test:e2e": "playwright test --config=playwright.config.mts --workers=1",
     "test:e2e:ui": "npm run test:ui --workspace=e2e",
     "db:reset": "npm run db:reset --workspace=apps/backend",
+    "db:recreate": "npm run db:recreate --workspace=apps/backend",
     "create-admin": "npm run create-admin --workspace=apps/backend",
+    "migration:generate": "npm run migration:generate --workspace=apps/backend",
+    "migration:create": "npm run migration:create --workspace=apps/backend",
+    "migration:run": "npm run migration:run --workspace=apps/backend",
+    "migration:revert": "npm run migration:revert --workspace=apps/backend",
     "test": "playwright test --config=playwright.config.mts --workers=1"
   },
   "devDependencies": {

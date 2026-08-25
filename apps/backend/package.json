@@ -8,7 +8,13 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main",
     "db:reset": "ts-node src/database/reset-db.ts",
-    "create-admin": "ts-node src/cli/create-admin.ts"
+    "db:recreate": "ts-node src/database/recreate-db.ts",
+    "create-admin": "ts-node src/cli/create-admin.ts",
+    "typeorm": "typeorm-ts-node-commonjs",
+    "migration:generate": "npm run typeorm -- migration:generate -d src/data-source.ts",
+    "migration:create": "npm run typeorm -- migration:create src/migrations/",
+    "migration:run": "npm run typeorm -- migration:run -d src/data-source.ts",
+    "migration:revert": "npm run typeorm -- migration:revert -d src/data-source.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

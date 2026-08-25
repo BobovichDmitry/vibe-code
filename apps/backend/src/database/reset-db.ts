@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
-import { UserEntity } from '../users/entities/user.entity';
+import { ENTITIES } from './entities';
 
 const dbType = process.env.DB_TYPE || 'sqlite';
 
@@ -13,15 +13,15 @@ const dataSource = new DataSource(
         username: process.env.DB_USERNAME || 'postgres',
         password: process.env.DB_PASSWORD || 'postgres',
         database: process.env.DB_DATABASE || 'vibe_setup_ui',
-        entities: [UserEntity],
+        entities: ENTITIES,
         synchronize: true,
       }
     : {
         type: 'sqlite' as const,
         database: process.env.DB_SQLITE_PATH || './data/database.sqlite',
-        entities: [UserEntity],
+        entities: ENTITIES,
         synchronize: true,
-      }
+      },
 );
 
 async function resetDatabase() {
