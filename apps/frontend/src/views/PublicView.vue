@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { getUserCount, type UserCountResponse } from '@/api/users';
+import { useBranding } from '@/composables/useBranding';
+
+const { title } = useBranding();
 
 const userCount = ref<UserCountResponse>({ total: 0, adminCount: 0 });
 const loading = ref(true);
 const error = ref<string | null>(null);
 
-const title = 'Панель управления пользователями';
 const description = 'Это публичная страница. Здесь отображается общая статистика системы.';
 
 onMounted(async () => {

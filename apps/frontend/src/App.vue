@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { useTheme } from '@/composables/useTheme';
+import ThemeToggle from '@/components/ThemeToggle.vue';
+import { useBranding } from '@/composables/useBranding';
 
 const router = useRouter();
-const { theme, setTheme, toggleTheme, isDark } = useTheme();
+const { title } = useBranding();
 
 const isAuthenticated = ref(!!localStorage.getItem('auth_token'));
 
@@ -33,21 +34,13 @@ onUnmounted(() => {
             </svg>
           </span>
           <span>
-            <span class="block text-lg font-semibold text-slate-950 dark:text-white">User Management</span>
+            <span class="block text-lg font-semibold text-slate-950 dark:text-white">{{ title }}</span>
             <span class="block text-sm text-slate-500 dark:text-slate-400">Шаблоны приложения</span>
           </span>
         </button>
 
         <div class="flex items-center gap-2">
-          <div class="hidden rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-900 sm:flex">
-            <button @click="setTheme('light')" class="rounded-lg px-3 py-2 text-xs font-medium transition" :class="theme === 'light' ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'">Light</button>
-            <button @click="setTheme('system')" class="rounded-lg px-3 py-2 text-xs font-medium transition" :class="theme === 'system' ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'">System</button>
-            <button @click="setTheme('dark')" class="rounded-lg px-3 py-2 text-xs font-medium transition" :class="theme === 'dark' ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'">Dark</button>
-          </div>
-          <button @click="toggleTheme" class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" :aria-label="isDark ? 'Светлая тема' : 'Тёмная тема'">
-            <svg v-if="isDark" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1 1 11.21 3c0 .24-.01.48-.01.72A9 9 0 0 0 20.28 12c.24 0 .48 0 .72-.01Z"/></svg>
-            <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25M12 18.75V21M4.72 4.72l1.59 1.59M17.69 17.69l1.59 1.59M3 12h2.25M18.75 12H21M4.72 19.28l1.59-1.59M17.69 6.31l1.59-1.59M15.75 12A3.75 3.75 0 1 1 8.25 12a3.75 3.75 0 0 1 7.5 0Z"/></svg>
-          </button>
+          <ThemeToggle />
           <button @click="router.push('/admin/users')" class="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">
             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0 1.657-1.343 3-3 3S6 12.657 6 11V8a6 6 0 1 1 12 0v3c0 3.314-2.686 6-6 6h-1"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 14v2a3 3 0 1 0 6 0v-2"/></svg>
             Админ
