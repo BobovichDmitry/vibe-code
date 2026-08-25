@@ -38,19 +38,18 @@
           ansible.builtin.pause:
             seconds: 15
 
-        - name: Проверить http://localhost:3000/api/users/count → 200
-          ansible.builtin.uri:
-            url: http://localhost:3000/api/users/count
-            method: GET
-            status_code: 200
-            return_content: true
+        - name: Проверить /api/users/count внутри контейнера app (порт наружу не проброшен)
+          ansible.builtin.command:
+            cmd: docker compose -p {{ project_name }} -f docker-compose.prod.yml exec -T app wget -qO- http://localhost:3000/api/users/count
+            chdir: "{{ project_dir }}/docker"
           register: health_result
-          retries: 5
+          changed_when: false
+          retries: 6
           delay: 5
 
         - name: Вывести результат healthcheck
           ansible.builtin.debug:
-            msg: "Healthcheck OK: {{ health_result.json }}"
+            msg: "Healthcheck OK: {{ health_result.stdout }}"
 
         - name: Проверить через nginx-proxy (https://{{ domain }}/api/users/count)
           ansible.builtin.uri:

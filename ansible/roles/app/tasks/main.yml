@@ -21,15 +21,24 @@
     dest: "{{ project_dir }}/docker/env"
     mode: "0600"
 
+# docker-compose.prod.yml интерполирует ${VIRTUAL_HOST}/${DB_USERNAME}/... —
+# compose читает их из .env рядом с compose-файлом (env_file для интерполяции НЕ используется).
+- name: Рендерить docker/.env для compose-интерполяции
+  ansible.builtin.copy:
+    src: "{{ project_dir }}/docker/env"
+    dest: "{{ project_dir }}/docker/.env"
+    remote_src: true
+    mode: "0600"
+
 - name: Собрать приложение (docker compose build)
-  ansible.builtin.command: docker compose -f {{ prod_compose_file }} build
+  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} build
   args:
     chdir: "{{ project_dir }}/docker"
   register: app_build
   changed_when: "'SUCCESSFULLY' in app_build.stderr or 'naming to' in app_build.stderr"
 
 - name: Поднять приложение (docker compose up -d)
-  ansible.builtin.command: docker compose -f {{ prod_compose_file }} up -d
+  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} up -d
   args:
     chdir: "{{ project_dir }}/docker"
   register: app_up

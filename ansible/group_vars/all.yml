@@ -10,6 +10,8 @@
 server_ip: "127.0.0.1"
 # Домен приложения (должен указывать DNS-записью на server_ip)
 domain: "app.example.com"
+# Слаг проекта: исходники в /opt/<project_name>, контейнеры/тома с префиксом <project_name>
+project_name: "gmoreva-setup"
 
 # --- Пути ---
 # Куда распаковывается архив исходников

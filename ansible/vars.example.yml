@@ -7,6 +7,7 @@
 
 server_ip: "203.0.113.10"
 domain: "app.example.com"
+project_name: "gmoreva-setup"
 
 project_dir: "/opt/vibesetup"
 archive_path: "/opt/vibesetup.tar.gz"
