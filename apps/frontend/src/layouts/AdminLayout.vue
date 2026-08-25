@@ -2,23 +2,24 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from '@/composables/useAuth';
-import { useBranding } from '@/composables/useBranding';
 import ThemeToggle from '@/components/ThemeToggle.vue';
 
 /**
  * AdminLayout — layout админ-панели с ЛЕВЫМ вертикальным сайдбаром
  * (по образцу agent-hosted). Сайдбар содержит:
- *   - бренд-блок (иконка + название продукта + «Admin Panel»);
  *   - вертикальную навигацию (пока только «Пользователи» с иконкой);
  *   - внизу: ThemeToggle, бейдж логина, кнопка «Выйти».
+ *
+ * Без отдельного хедера внутри сайдбара — навигация начинается сверху.
  *
  * Адаптив:
  *   - `lg+`: сайдбар стационарный (`sticky top-0 h-dvh`, w-64 слева), контент — остаток;
  *   - `< lg`: сайдбар скрыт, открывается бургером в шапке как overlay-drawer
  *     (scrim + выезд слева). Закрытие: клик по scrim / Esc / выбор пункта.
+ *
+ * Маршрут `/admin` редиректит на `admin-users` (страница «Пользователи»).
  */
 const { user, logout } = useAuth();
-const { title } = useBranding();
 const route = useRoute();
 const router = useRouter();
 
@@ -33,7 +34,8 @@ const navItems = [
   { name: 'Пользователи', path: '/admin', icon: ICON_USERS },
 ];
 
-const isActive = (path: string) => route.path === path || (path !== '/admin' && route.path.startsWith(path));
+// «Пользователи» — единственная страница админки, активна на всём разделе /admin.
+const isActive = (path: string) => route.path === path || route.path.startsWith(path + '/') || route.path === path;
 
 function navigate(path: string) {
   router.push(path);
@@ -94,35 +96,14 @@ onUnmounted(() => {
       @click="sidebarOpen = false"
     />
 
-    <!-- Sidebar: на lg+ стационарный (sticky, высота = viewport); на < lg — overlay-drawer -->
+    <!-- Sidebar: на lg+ стационарный (sticky, высота = viewport); на < lg — overlay-drawer.
+         Без хедера внутри — навигация сверху, внизу ThemeToggle + логин + Выйти. -->
     <aside
       class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 transform flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950 lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0"
       :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
-      <!-- Бренд-блок + закрытие drawer (только < lg) -->
-      <div class="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-4 dark:border-slate-800">
-        <div class="flex min-w-0 items-center gap-2.5">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-soft">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 11c0 1.657-1.343 3-3 3S6 12.657 6 11V8a6 6 0 1 1 12 0v3c0 3.314-2.686 6-6 6h-1"/><path stroke-linecap="round" stroke-linejoin="round" d="M9 14v2a3 3 0 1 0 6 0v-2"/>
-            </svg>
-          </span>
-          <span class="min-w-0">
-            <span class="block truncate text-sm font-semibold text-slate-950 dark:text-white">{{ title }}</span>
-            <span class="block truncate text-xs text-slate-500 dark:text-slate-400">Admin Panel</span>
-          </span>
-        </div>
-        <button
-          class="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 lg:hidden"
-          aria-label="Закрыть меню"
-          @click="sidebarOpen = false"
-        >
-          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-        </button>
-      </div>
-
-      <!-- Вертикальная навигация -->
-      <nav class="min-h-0 flex-1 overflow-y-auto px-2 py-3" aria-label="Навигация админ-панели">
+      <!-- Вертикальная навигация (с верхним отступом вместо хедера) -->
+      <nav class="min-h-0 flex-1 overflow-y-auto px-2 py-4" aria-label="Навигация админ-панели">
         <ul class="flex flex-col gap-1">
           <li v-for="item in navItems" :key="item.path">
             <button
