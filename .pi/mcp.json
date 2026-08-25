@@ -6,13 +6,6 @@
         "scripts/ssh.sh"
       ],
       "directTools": true
-    },
-    "sftp-connect": {
-      "command": "bash",
-      "args": [
-        "scripts/sftp.sh"
-      ],
-      "directTools": true
     }
   }
 }
