@@ -9,6 +9,7 @@ apps/backend/dist/
 # Environment
 .env.local
 .env.*.local
+/.env
 
 # IDE
 .idea/

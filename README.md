@@ -186,6 +186,31 @@ npm run test:e2e:ui                            # UI mode
 | GET | `/api/users/count` | Количество пользователей (**публичный**) |
 | GET | `/api/branding` | Бренд: `{ title, faviconUrl }` (**публичный**, из env) |
 
+## Удалённый доступ к серверу (SSH/SFTP через MCP)
+
+Для работы с целевым сервером прямо из pi-агента настроены два MCP-сервера в [`.pi/mcp.json`](.pi/mcp.json):
+
+- **`ssh-connect`** — SSH (выполнение команд на сервере), `npx ssh-mcp` → [scripts/ssh.sh](scripts/ssh.sh)
+- **`sftp-connect`** — SFTP (передача файлов), `npx sftp-ssh-mcp` → [scripts/sftp.sh](scripts/sftp.sh)
+
+Скрипты читают SSH-доступы из корневого `.env` (не в git). Достаточно создать его из примера и заполнить:
+
+```bash
+cp .env.example .env
+# заполнить: SSH_HOST (домен или IP), SSH_PORT, SSH_USER, SSH_PASSWORD
+```
+
+```
+SSH_HOST=app.example.com   # домен или IP целевого сервера
+SSH_PORT=22
+SSH_USER=root
+SSH_PASSWORD=********
+```
+
+После этого инструменты `ssh-connect`/`sftp-connect` доступны агенту — можно выполнять команды на сервере и передавать файлы без ручного SSH. Пакеты `ssh-mcp`/`sftp-ssh-mcp` подтягиваются через `npx` автоматически.
+
+> Для key-based auth замените в `scripts/*.sh` парольную передачу на ssh-ключ или используйте ssh-agent.
+
 ## Очередь задач (tasks/)
 
 Проект использует очередь задач в `tasks/` (см. [tasks/agents.md](tasks/agents.md)) — источник истины `tasks/index.md` (разделы Todo/NeedInfo/Errors/Done). Скиллы: `task-creator`, `task-solver`, `task-batch-solver`, `task-list-converter`; сабагенты: `code-solver`, `e2e-writer`, `docs-maintainer`, `test-runner`, `test-fixer`, `browser-checker`.
