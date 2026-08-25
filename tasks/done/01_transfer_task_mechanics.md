@@ -55,3 +55,43 @@
 - `e2e/fixtures.ts`/`global-setup.ts` — `E2E_USE_BROWSER`/`E2E_HEADLESS` читаются; CDP-путь по умолчанию сохранён; headless-ветка через `chromium.launch` есть.
 - `cd e2e && npx tsc --noEmit` (если применимо) / `npx playwright test --list` — синтаксис спек не сломан.
 - dev-серверы и e2e-прогон не запускать (проверка типов/синтаксиса только).
+---
+
+## Реализация (2025-01-24)
+
+### Что сделано
+
+- Перенесены 4 скилла в `.pi/skills/`: `task-creator`, `task-solver`, `task-batch-solver`, `task-list-converter` — адаптированы под vibecode-setup (пути, команды, ссылки на `AGENTS.md`, примеры из реального кода проекта).
+- Создан сабагент `.pi/agents/code-solver.md` — `defaultContext: fresh`, `disallowed_tools` без `chrome_devtools_*` и `subagent`, проверка через `tsc --noEmit`/`vue-tsc --noEmit`.
+- Создан сабагент `.pi/agents/e2e-writer.md` — поддерживает оба стиля e2e: браузерно-CDP (через `connectedPage` из `e2e/fixtures.ts`) и API-стиль (axios против `E2E_API_URL`). Выбор стиля — по сути задачи (таблица в описании агента).
+- e2e-инфра доработана для env-управления браузером:
+  - `e2e/fixtures.ts`, `e2e/global-setup.ts`, `e2e/playwright.config.ts`, `e2e/.env` — заменён `E2E_BROWSER_MODE` на `E2E_USE_BROWSER` (default `true`) + `E2E_HEADLESS` (default `false`).
+  - `E2E_USE_BROWSER=true` + `E2E_HEADLESS=false` → CDP (`connectOverCDP`) — путь по умолчанию, поведение не сломано.
+  - `E2E_USE_BROWSER=true` + `E2E_HEADLESS=true` → Playwright `chromium.launch({ headless: true })`.
+  - `E2E_USE_BROWSER=false` → браузер не поднимается (API-only тесты через axios). `connectedBrowser`/`connectedPage` бросают ошибку.
+- `task-batch-solver` адаптирован: упоминания «изолированный backend 3511 / mock-ai 9101» убраны; e2e-стадия через существующий `test-runner`; стиль теста выбирает `e2e-writer`; коммит через точечный `git add` (не `git add -A`).
+
+### Изменённые файлы
+
+- `.pi/skills/task-creator/SKILL.md` — новый
+- `.pi/skills/task-solver/SKILL.md` — новый
+- `.pi/skills/task-batch-solver/SKILL.md` — новый
+- `.pi/skills/task-list-converter/SKILL.md` — новый
+- `.pi/agents/code-solver.md` — новый
+- `.pi/agents/e2e-writer.md` — новый
+- `e2e/fixtures.ts` — refactor: `E2E_USE_BROWSER`/`E2E_HEADLESS`, headless-ветка, API-only guard
+- `e2e/global-setup.ts` — refactor: новые env-переменные, условный CDP-чек
+- `e2e/playwright.config.ts` — refactor: `headless` из env, `globalSetup` по условию
+- `e2e/.env` — новые переменные `E2E_USE_BROWSER`/`E2E_HEADLESS` с дефолтами и комментариями
+
+### Как проверено
+
+- `apps/backend`: `npx tsc --noEmit` — OK (0 ошибок)
+- `apps/frontend`: `npx vue-tsc --noEmit` — OK (0 ошибок)
+- `e2e`: `npx playwright test --list` — OK (9 тестов в 2 файлах, синтаксис не сломан)
+- dev-серверы и e2e-прогон не запускались (по правилам проекта)
+
+### Остаточные риски
+
+- Существующие спеки (`basic.spec.ts`, `telegram-settings.spec.ts`) используют стандартный `page` из `@playwright/test`, а не кастомные `connectedPage` из `fixtures.ts` — это не влияет на функциональность, но при `E2E_USE_BROWSER=false` стандартный `page` всё равно попытается запустить браузер (Playwright управляет им независимо). API-only тесты (без `page`) работают без браузера. Это известное ограничение Playwright — полностью отключить стандартный `page` fixture нельзя.
+- В `e2e/global-setup.ts` осталась потенциальная type-ошибка с `execSync` shell-опцией (pre-existing, не введена этой задачей) — не блокирует, т.к. tsconfig в e2e отсутствует и проверка идёт через `playwright test --list`.
