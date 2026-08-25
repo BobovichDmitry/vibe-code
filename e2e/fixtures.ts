@@ -33,7 +33,13 @@ Object.entries(envVars).forEach(([k, v]) => {
   if (process.env[k] === undefined || process.env[k] === '') process.env[k] = v;
 });
 
-const BROWSER_MODE = process.env.E2E_BROWSER_MODE || 'cdp';
+// ── Browser mode (env-controlled) ─────────────────────────────────
+// E2E_USE_BROWSER: 'true' (default) — browser tests enabled.
+//   'false' — no browser at all (API-only tests via axios).
+// E2E_HEADLESS: 'false' (default) — CDP mode (connectOverCDP to REMOTE_CHROME_HOST:BROWSER_PORT).
+//   'true' — Playwright launches chromium headless (chromium.launch).
+const E2E_USE_BROWSER = (process.env.E2E_USE_BROWSER ?? 'true').toLowerCase() !== 'false';
+const E2E_HEADLESS = (process.env.E2E_HEADLESS ?? 'false').toLowerCase() === 'true';
 const BROWSER_PORT = process.env.BROWSER_PORT || '9222';
 const REMOTE_CHROME_HOST = process.env.REMOTE_CHROME_HOST || 'localhost';
 const REMOTE_DEBUGGING_URL = `http://${REMOTE_CHROME_HOST}:${BROWSER_PORT}`;
@@ -47,12 +53,12 @@ async function getManagedBrowser(): Promise<Browser> {
   if (managedBrowser && managedBrowser.isConnected()) {
     return managedBrowser;
   }
-  const launchOpts: any = { headless: BROWSER_MODE === 'headless' };
+  const launchOpts: { headless: boolean; executablePath?: string } = { headless: true };
   if (CHROME_PATH) {
     launchOpts.executablePath = CHROME_PATH;
   }
   managedBrowser = await chromium.launch(launchOpts);
-  console.log(`✅ Launched ${BROWSER_MODE} browser`);
+  console.log(`✅ Launched headless browser`);
   return managedBrowser;
 }
 
@@ -65,14 +71,27 @@ async function getCdpBrowser(): Promise<Browser> {
   return cdpBrowser;
 }
 
+/**
+ * Returns the browser based on env config.
+ * - E2E_USE_BROWSER=false → throws (browser disabled, API-only tests).
+ * - E2E_HEADLESS=true → Playwright-managed headless chromium.
+ * - E2E_HEADLESS=false (default) → CDP connection to external Chrome.
+ */
+async function getBrowser(): Promise<Browser> {
+  if (!E2E_USE_BROWSER) {
+    throw new Error(
+      'Browser disabled (E2E_USE_BROWSER=false). Use API-only tests (axios) without connectedPage/connectedBrowser fixtures.',
+    );
+  }
+  return E2E_HEADLESS ? getManagedBrowser() : getCdpBrowser();
+}
+
 export const test = base.extend<{
   connectedBrowser: Browser;
   connectedPage: Page;
 }>({
   connectedBrowser: async ({}, use) => {
-    const browser = BROWSER_MODE === 'cdp'
-      ? await getCdpBrowser()
-      : await getManagedBrowser();
+    const browser = await getBrowser();
     await use(browser);
     // Don't close here — shared across tests
   },

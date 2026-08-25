@@ -28,7 +28,14 @@ Object.entries(envVars).forEach(([k, v]) => {
   if (process.env[k] === undefined || process.env[k] === '') process.env[k] = v;
 });
 
-const BROWSER_MODE = process.env.E2E_BROWSER_MODE || 'cdp';
+// ── Browser mode (env-controlled) ─────────────────────────────────
+const E2E_USE_BROWSER = (process.env.E2E_USE_BROWSER ?? 'true').toLowerCase() !== 'false';
+const E2E_HEADLESS = (process.env.E2E_HEADLESS ?? 'false').toLowerCase() === 'true';
+
+// Global setup runs in headless and API-only modes (resets DB + starts backend).
+// In CDP mode (default: E2E_USE_BROWSER=true + E2E_HEADLESS=false) the user
+// manages Chrome + backend, so global setup is skipped.
+const SKIP_GLOBAL_SETUP = E2E_USE_BROWSER && !E2E_HEADLESS;
 
 export default defineConfig({
   testDir: './tests',
@@ -40,10 +47,10 @@ export default defineConfig({
   reporter: process.env.CI ? 'list' : [['list'], ['html']],
   use: {
     browserName: 'chromium',
-    headless: true,
+    headless: E2E_HEADLESS,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  globalSetup: BROWSER_MODE === 'cdp' ? undefined : './global-setup.ts',
+  globalSetup: SKIP_GLOBAL_SETUP ? undefined : './global-setup.ts',
 });

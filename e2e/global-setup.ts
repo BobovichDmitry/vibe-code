@@ -33,7 +33,13 @@ Object.entries(envVars).forEach(([k, v]) => {
   if (process.env[k] === undefined || process.env[k] === '') process.env[k] = v;
 });
 
-const BROWSER_MODE = process.env.E2E_BROWSER_MODE || 'cdp';
+// ── Browser mode (env-controlled) ─────────────────────────────────
+// E2E_USE_BROWSER: 'true' (default) — browser tests enabled.
+//   'false' — no browser at all (API-only tests via axios).
+// E2E_HEADLESS: 'false' (default) — CDP mode (connectOverCDP).
+//   'true' — Playwright launches chromium headless.
+const E2E_USE_BROWSER = (process.env.E2E_USE_BROWSER ?? 'true').toLowerCase() !== 'false';
+const E2E_HEADLESS = (process.env.E2E_HEADLESS ?? 'false').toLowerCase() === 'true';
 const BROWSER_PORT = process.env.BROWSER_PORT || '9222';
 const REMOTE_CHROME_HOST = process.env.REMOTE_CHROME_HOST || 'localhost';
 const REMOTE_DEBUGGING_URL = `http://${REMOTE_CHROME_HOST}:${BROWSER_PORT}`;
@@ -57,8 +63,9 @@ async function waitForBackend(maxRetries = 30, delay = 1000): Promise<boolean> {
 }
 
 async function globalSetup() {
-  // For CDP mode: check or launch Chrome
-  if (BROWSER_MODE === 'cdp') {
+  // Browser setup: only check/launch Chrome in CDP mode
+  // (E2E_USE_BROWSER=true + E2E_HEADLESS=false)
+  if (E2E_USE_BROWSER && !E2E_HEADLESS) {
     console.log(`Checking Chrome CDP at ${REMOTE_DEBUGGING_URL}...`);
     try {
       const res = await axios.get(`${REMOTE_DEBUGGING_URL}/json/version`);
@@ -81,8 +88,10 @@ async function globalSetup() {
         console.warn(`Chrome not reachable at ${REMOTE_DEBUGGING_URL} — make sure it's started with --remote-debugging-port=${BROWSER_PORT}`);
       }
     }
+  } else if (E2E_USE_BROWSER && E2E_HEADLESS) {
+    console.log('Headless mode — Playwright will launch chromium.headless automatically.');
   } else {
-    console.log(`Using ${BROWSER_MODE} mode — Playwright will manage the browser.`);
+    console.log('API-only mode (E2E_USE_BROWSER=false) — no browser will be started.');
   }
 
   // Find project root
