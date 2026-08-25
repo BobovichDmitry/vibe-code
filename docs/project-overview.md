@@ -2,7 +2,7 @@
 
 ## Описание
 
-Шаблон Nest.js + Vue 3 приложения с авторизацией, админ-панелью управления пользователями и настройками Telegram бота. Публичная часть показывает текущее количество пользователей. Админ-панель (под авторизацией) позволяет управлять пользователями: просматривать список, создавать новых, удалять (кроме самого себя). Также есть раздел настроек Telegram бота: сохранение токена бота, Chat ID для уведомлений, отправка тестового сообщения.
+Шаблон Nest.js + Vue 3 приложения с авторизацией, админ-панелью управления пользователями и публичной страницей со счётчиком пользователей. Публичная часть показывает текущее количество пользователей. Админ-панель (под авторизацией) позволяет управлять пользователями: просматривать список, создавать новых, удалять (кроме самого себя).
 
 **Стек**: Nest.js + Express (backend), Vue 3 + Tailwind CSS (frontend), SQLite (dev) / PostgreSQL (prod), JWT auth, Playwright e2e tests (CDP).
 
@@ -30,11 +30,10 @@ project/
 │   ├── backend/          # Nest.js API (@Controller + TypeORM)
 │   │   ├── src/auth/     # JWT auth (login, me, password)
 │   │   ├── src/users/    # User CRUD (admin only)
-│   │   ├── src/settings/ # Telegram bot settings (token, chatId, test send)
 │   │   └── src/main.ts   # Entry, SPA fallback, CORS
 │   └── frontend/         # Vue 3 SPA (Vite + Tailwind)
-│       ├── src/api/      # Axios clients (auth, users, settings)
-│       ├── src/views/    # PublicView, LoginView, Admin (ManageUsersView, TelegramBotView)
+│       ├── src/api/      # Axios clients (auth, users)
+│       ├── src/views/    # PublicView, LoginView, Admin (ManageUsersView)
 │       └── src/router/   # Hash router
 ├── e2e/                  # Playwright e2e tests (CDP)
 ├── docker/               # Dockerfile + compose files
@@ -60,7 +59,6 @@ project/
 6. **JWT auth**: Bearer token, 24h expiry. Guard `@UseGuards(JwtAuthGuard)` для защищённых маршрутов.
 7. **Role-based access**: Роли `admin` и `user`. Только `admin` может CRUD пользователей.
 8. **Seeding**: Первый админ создаётся автоматически при пустой БД (из `ADMIN_LOGIN` / `ADMIN_PASSWORD` из env).
-9. **Telegram bot settings**: Таблица `settings` — singleton, одна строка. Автосоздание при первом запросе. Сохранение токена бота, Chat ID. Тестовая отправка сообщения через Telegram Bot API (`fetch`, без доп. зависимостей).
 
 ## Порты
 

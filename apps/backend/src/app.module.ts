@@ -2,8 +2,6 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
-import { SettingsModule } from './settings/settings.module';
-import { RemindersModule } from './reminders/reminders.module';
 import { UsersService } from './users/users.service';
 
 @Module({
@@ -11,8 +9,6 @@ import { UsersService } from './users/users.service';
     DatabaseModule,
     AuthModule,
     UsersModule,
-    SettingsModule,
-    RemindersModule,
   ],
 })
 export class AppModule implements OnModuleInit {

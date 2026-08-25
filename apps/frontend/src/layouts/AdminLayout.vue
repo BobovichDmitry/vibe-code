@@ -10,7 +10,6 @@ const { theme, setTheme, toggleTheme, isDark } = useTheme();
 
 const navItems = [
   { name: 'Пользователи', path: '/admin' },
-  { name: 'Telegram бот', path: '/admin/telegram-bot' },
 ];
 
 const isActive = (path: string) => route.path === path;

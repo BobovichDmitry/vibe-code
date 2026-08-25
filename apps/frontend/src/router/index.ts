@@ -18,12 +18,6 @@ const router = createRouter({
       component: () => import('@/views/PublicView.vue'),
     },
     {
-      path: '/reminders',
-      name: 'reminders',
-      component: () => import('@/views/RemindersView.vue'),
-      beforeEnter: requireAuth,
-    },
-    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/LoginView.vue'),
@@ -39,11 +33,6 @@ const router = createRouter({
           path: '',
           name: 'admin-users',
           component: () => import('@/views/admin/ManageUsersView.vue'),
-        },
-        {
-          path: 'telegram-bot',
-          name: 'admin-telegram-bot',
-          component: () => import('@/views/admin/TelegramBotView.vue'),
         },
       ],
     },
