@@ -55,3 +55,25 @@
 - `cd apps/frontend && npx vue-tsc --noEmit` — без ошибок.
 - `rg -i "reminder|telegram|settings" apps/backend/src apps/frontend/src` — пусто (кроме `useTheme`/`system` и легитимного).
 - `git status` — удалены файлы reminders/settings; изменены `app.module.ts`, `database.module.ts`, router, `AdminLayout.vue`, docs, `AGENTS.md`.
+## Реализация (2025-01-25)
+
+Удалены модули `reminders/` и `settings/` (backend + frontend + e2e + docs), оставлен каркас: auth + users + публичный `GET /api/users/count` + `PublicView.vue` + CLI `create-admin`.
+
+**Изменённые файлы:**
+- Backend: удалены папки `apps/backend/src/reminders/` и `apps/backend/src/settings/`; `app.module.ts` — убраны импорты/регистрации `SettingsModule`/`RemindersModule`; `database.module.ts` — `ENTITIES = [UserEntity]` (убраны `SettingsEntity`/`ReminderEntity`).
+- Frontend: удалены `views/RemindersView.vue`, `views/admin/TelegramBotView.vue`, `api/reminders.ts`, `api/settings.ts`; `router/index.ts` — убраны роуты `/reminders` и `/admin/telegram-bot`; `AdminLayout.vue` — navItems только «Пользователи»; `App.vue` — убрана кнопка «Напоминания».
+- E2E: удалён `e2e/tests/telegram-settings.spec.ts`; `basic.spec.ts` не ссылается на reminders/telegram — без изменений.
+- Docs: удалён `docs/areas/reminders.md`; обновлены `backend-api-structure.md`, `database-structure.md`, `frontend-structure.md`, `context-index.md`, `project-overview.md`, корневой `agents.md` (убраны упоминания reminders/settings/telegram, API-эндпоинты, design decision #10).
+- `package.json`: скриптов, ссылающихся на удалённое, не найдено — без изменений. Зависимость `node-cron` осталась в `apps/backend/package.json` (не используется, но пакет уже модифицирован в рабочем дереве сторонними правками — не трогалось).
+
+**Как проверено:**
+- `cd apps/backend && npx tsc --noEmit` — чисто (exit 0).
+- `cd apps/frontend && npx vue-tsc --noEmit` — чисто (exit 0).
+- `npm run build:frontend` — успешно (93 модуля, built in 2.77s).
+- `grep -rni "reminder|telegram" apps/backend/src apps/frontend/src` — пусто.
+- `grep -rni "settings" apps/backend/src apps/frontend/src` (без легитимных theme/system) — пусто.
+
+**Остаточные риски:**
+- `node-cron` остался в `apps/backend/package.json` deps — осиротевшая зависимость (не импортируется). Можно убрать в задаче 03 или отдельным cleanup-коммитом. Не блокирует сборку/типы.
+- `apps/backend/package.json` и `package-lock.json` модифицированы сторонними правками в рабочем дереве — не закоммичены этой задачей.
+- БД с таблицами `reminder`/`settings` (если есть данные) не мигрируется автоматически — при следующем запуске TypeORM `synchronize: true` удалит таблицы, отсутствующие в `ENTITIES`. Рекомендуется `npm run db:reset` при первом запуске после обновления.
