@@ -59,8 +59,8 @@ deploy:main:
   extends: .base_deploy
   stage: deploy
   variables:
-    DEPLOY_HOST: ubuntu@ai.wormsoft.ru
-    DEPLOY_PATH: /home/ubuntu/projects/inside/vibe-setup-ui
+    DEPLOY_HOST: your-ssh-server.address
+    DEPLOY_PATH: /path/on/server
     APP_IMAGE: "$IMAGE_TAG_LATEST"
   environment:
     name: production
