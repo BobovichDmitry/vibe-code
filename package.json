@@ -11,6 +11,7 @@
     "dev:backend": "npm run start:dev --workspace=apps/backend",
     "dev:frontend": "npm run dev --workspace=apps/frontend",
     "dev": "concurrently -n backend,frontend -c yellow,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:log": "concurrently -n backend,frontend -c yellow,green \"npm run dev:backend:log\" \"npm run dev:frontend:log\"",
     "dev:backend:log": "node scripts/log-runner.mjs backend npm run dev:backend",
     "dev:frontend:log": "node scripts/log-runner.mjs frontend npm run dev:frontend",
     "kill:backend": "node scripts/kill-service.mjs backend",
