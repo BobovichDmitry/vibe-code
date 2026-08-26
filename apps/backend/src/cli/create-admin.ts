@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../env';
 import { NestFactory } from '@nestjs/core';
 import { UsersService } from '../users/users.service';
 import { UsersModule } from '../users/users.module';

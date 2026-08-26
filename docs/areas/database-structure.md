@@ -6,7 +6,7 @@ TypeORM с двумя подключениями: SQLite (dev) / PostgreSQL (pro
 - **Dev**: `DB_SYNCHRONIZE=true` → `synchronize: true` (быстрая итерация, миграции не запускаются).
 - **Prod**: `DB_SYNCHRONIZE=false` → `synchronize: false`, `migrationsRun: true` (pending-миграции накатываются при старте Nest).
 
-Одна сущность: User (авторизация и управление пользователями).
+Сущности: User (авторизация/управление) и File (мета файлов в S3).
 
 ## Ключевые файлы
 
@@ -15,10 +15,11 @@ TypeORM с двумя подключениями: SQLite (dev) / PostgreSQL (pro
 | `apps/backend/src/database/database.module.ts` | TypeORM config (SQLite/PostgreSQL via DB_TYPE, режимы via DB_SYNCHRONIZE) |
 | `apps/backend/src/database/entities.ts` | Единый `ENTITIES` — общий для Nest-модуля, DataSource и reset-db |
 | `apps/backend/src/data-source.ts` | Standalone DataSource для TypeORM CLI (synchronize:false, migrationsRun:false) |
-| `apps/backend/src/migrations/` | Папка миграций (baseline `1740613433000-InitSchema.ts`) |
+| `apps/backend/src/migrations/` | Папка миграций (`1740613433000-InitSchema.ts`, `1787755508525-AddFileEntity.ts`) |
 | `apps/backend/src/database/reset-db.ts` | Dev-утилита: db:reset (drop + synchronize) |
 | `apps/backend/src/database/recreate-db.ts` | Prod-prep: db:recreate (drop + накат миграций с нуля) |
 | `apps/backend/src/users/entities/user.entity.ts` | User entity |
+| `apps/backend/src/files/entities/file.entity.ts` | File entity |
 
 ## Сущности
 
@@ -32,6 +33,22 @@ TypeORM с двумя подключениями: SQLite (dev) / PostgreSQL (pro
 | login | string | unique, not null |
 | passwordHash | string | not null |
 | role | varchar | default 'user', values: 'admin', 'user' |
+| createdAt | datetime | — |
+| updatedAt | datetime | — |
+
+### File
+
+Таблица `file` — метаданные файлов в S3. Создаётся при прямой загрузке (`inStorage=true`) и при запросе presigned-upload (`inStorage=false`, подтверждается через `update-meta`).
+
+| Column | Type | Constraints |
+|--------|------|-------------|
+| id | int (PK, auto) | — |
+| fileKey | varchar(512) | unique, not null |
+| originalName | varchar | nullable |
+| size | varchar | nullable (строка — байты) |
+| contentType | varchar | nullable |
+| inStorage | boolean | default false |
+| userId | integer | nullable |
 | createdAt | datetime | — |
 | updatedAt | datetime | — |
 

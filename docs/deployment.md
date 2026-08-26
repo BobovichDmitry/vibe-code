@@ -72,6 +72,16 @@ docker compose -f docker-compose.nginx-proxy.yml up -d
 | `DB_USERNAME` | `postgres` | PostgreSQL user |
 | `DB_DATABASE` | `app_db` | PostgreSQL database |
 | `PG_ROOT_PASSWORD` | `postgres` | PostgreSQL password |
+| `S3_ENDPOINT` | (empty) | S3-совместимое хранилище endpoint (напр. `https://s3.amazonaws.com`, MinIO) |
+| `S3_PUBLIC_URL` | = `S3_ENDPOINT` | Endpoint для presigned-URL (публичный домен, если отличается) |
+| `S3_REGION` | `us-east-1` | Регион S3 |
+| `S3_BUCKET` | (empty) | Имя бакета |
+| `S3_ACCESS_KEY` | (empty) | Access key id |
+| `S3_SECRET_KEY` | (empty) | Secret access key |
+| `S3_KEY_PREFIX` | (empty) | Префикс-папка для рандомных ключей (напр. `uploads/`) |
+| `S3_UPLOAD_EXPIRES` | `600` | Срок действия presigned PUT, сек |
+| `S3_DOWNLOAD_EXPIRES` | `86400` | Срок действия presigned GET, сек |
+| `S3_FORCE_PATH_STYLE` | `true` | `forcePathStyle` (true для MinIO/самохоста) |
 
 ### Backend dev (`apps/backend/.env`)
 
@@ -83,6 +93,13 @@ docker compose -f docker-compose.nginx-proxy.yml up -d
 | `JWT_SECRET` | `dev-secret-change-me` | JWT secret |
 | `ADMIN_LOGIN` | `admin` | First admin login (empty DB only) |
 | `ADMIN_PASSWORD` | `admin` | First admin password (empty DB only) |
+| `S3_ENDPOINT` | (empty) | S3 endpoint (MinIO/S3) |
+| `S3_BUCKET` | (empty) | Имя бакета |
+| `S3_FORCE_PATH_STYLE` | `true` | `forcePathStyle` (MinIO) |
+
+### .env.local
+
+`.env.local` (не под git) переопределяет `.env` (`override: true`) — сюда кладут локальные креды S3/MinIO. Шаблон: `apps/backend/.env.local.example`. Внешнее окружение (прод-контейнер) имеет наивысший приоритет. Загрузчик: `apps/backend/src/env.ts`. Полный список `S3_*` — в корневом `AGENTS.md`.
 
 ## Локальный Production
 

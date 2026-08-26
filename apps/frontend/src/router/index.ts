@@ -34,6 +34,11 @@ const router = createRouter({
           name: 'admin-users',
           component: () => import('@/views/admin/ManageUsersView.vue'),
         },
+        {
+          path: 'files',
+          name: 'admin-files',
+          component: () => import('@/views/admin/ManageFilesView.vue'),
+        },
       ],
     },
   ],

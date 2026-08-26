@@ -18,21 +18,29 @@ vibe-setup-ui/
 │   │   │   │   ├── auth.service.ts
 │   │   │   │   ├── jwt.strategy.ts
 │   │   │   │   └── jwt-auth.guard.ts
-│   │   │   └── users/                  # User CRUD (admin only)
-│   │   │       ├── entities/user.entity.ts
-│   │   │       ├── users.controller.ts
-│   │   │       ├── users.service.ts
-│   │   │       └── users.module.ts
-│   │   └── .env                        # DB_TYPE, DB_* settings, PORT
+│   │   │   ├── files/                  # Files in S3 (presigned-URL, upload)
+│   │   │   │   ├── entities/file.entity.ts
+│   │   │   │   ├── file.service.ts
+│   │   │   │   ├── files.controller.ts
+│   │   │   │   └── files.module.ts
+│   │   │   ├── users/                  # User CRUD (admin only)
+│   │   │   │   ├── entities/user.entity.ts
+│   │   │   │   ├── users.controller.ts
+│   │   │   │   ├── users.service.ts
+│   │   │   │   └── users.module.ts
+│   │   │   └── env.ts                  # Env loader (.env → .env.local override)
+│   │   └── .env                        # DB_TYPE, DB_* settings, PORT, S3_*
 │   └── frontend/         # Vue 3 + Tailwind (SPA)
 │       ├── src/
 │       │   ├── api/auth.ts              # Axios client for auth
 │       │   ├── api/users.ts             # Axios client for users
+│       │   ├── api/files.ts             # Axios client for files (S3)
 │       │   ├── components/              # Shared components
 │       │   ├── views/PublicView.vue     # Public page (user count)
 │       │   ├── views/LoginView.vue      # Login form
 │       │   ├── views/admin/ManageUsersView.vue  # Users CRUD
-│       │   ├── layouts/AdminLayout.vue  # Admin layout
+│       │   ├── views/admin/ManageFilesView.vue  # Files (S3) CRUD
+│       │   ├── layouts/AdminLayout.vue  # Admin layout (sidebar: Users + Files)
 │       │   ├── router/index.ts          # Hash router
 │       │   ├── composables/useAuth.ts   # Auth state
 │       │   └── style.css                # Tailwind directives
@@ -124,6 +132,9 @@ When debugging a problem, read the logs instead:
 ## Environment Variables
 
 ### Backend (`apps/backend/.env`)
+
+**`.env.local` (не под версионным контролем)** переопределяет значения из `.env`. Создаётся рядом с `.env`, игнорируется git (корневой `.gitignore`: `.env.local`, `.env.*.local`). Сюда кладут локальные креды (S3/MinIO и т.п.). Шаблон: `apps/backend/.env.local.example`. Внешнее окружение (прод-контейнер, systemd) имеет наивысший приоритет — dotenv его не перезаписывает.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DB_TYPE` | `sqlite` | `sqlite` or `postgres` |
@@ -139,6 +150,16 @@ When debugging a problem, read the logs instead:
 | `ADMIN_LOGIN` | `admin` | First admin (empty DB only) |
 | `ADMIN_PASSWORD` | `admin` | First admin (empty DB only) |
 | `CORS_ORIGIN` | `http://localhost:5173,...` | CORS allowed origins |
+| `S3_ENDPOINT` | (empty) | S3-совместимое хранилище endpoint (напр. `https://s3.amazonaws.com`, MinIO) |
+| `S3_PUBLIC_URL` | = `S3_ENDPOINT` | Endpoint для presigned-URL'ов (публичный домен, если отличается) |
+| `S3_REGION` | `us-east-1` | Регион S3 |
+| `S3_BUCKET` | (empty) | Имя бакета |
+| `S3_ACCESS_KEY` | (empty) | Access key id |
+| `S3_SECRET_KEY` | (empty) | Secret access key |
+| `S3_KEY_PREFIX` | (empty) | Префикс-папка для рандомных ключей (напр. `uploads/`) |
+| `S3_UPLOAD_EXPIRES` | `600` | Срок действия presigned PUT, сек |
+| `S3_DOWNLOAD_EXPIRES` | `86400` | Срок действия presigned GET, сек |
+| `S3_FORCE_PATH_STYLE` | `true` | `forcePathStyle` для S3Client (true для MinIO/самохоста) |
 
 ### Frontend (`apps/frontend/.env`)
 | Variable | Default | Description |
@@ -195,6 +216,21 @@ When debugging a problem, read the logs instead:
 | PATCH | `/api/users/:id` | Update user (admin only) |
 | DELETE | `/api/users/:id` | Delete user (admin only) |
 | GET | `/api/users/count` | User count (public, no auth) |
+
+### Files
+
+Все эндпоинты под JWT. `fileKey` передаётся через query (`?fileKey=...`) для поддержки ключей со слэшами. Прямая загрузка — multipart-поле `file`.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/files` | Список файлов (фильтр `search` по fileKey, пагинация `limit`/`offset`) → `{ items, total }` (JWT) |
+| POST | `/api/files` | Прямая загрузка файла (multipart `file`) → `{ fileKey, fileId }` (создаёт `FileEntity`, `inStorage=true`) |
+| POST | `/api/files/presigned-upload` | Запрос presigned PUT-URL (создаёт `FileEntity`, `inStorage=false`, без объекта-маркера) → `{ url, fileKey, fileId }` |
+| POST | `/api/files/update-meta` | Подтянуть size/contentType из `headObject`, поставить `inStorage=true` |
+| GET | `/api/files/presigned-url?fileKey=&disposition=&expiresIn=&filename=` | Presigned GET-URL → `{ url }` |
+| GET | `/api/files/stream?fileKey=` | Стрим файла (`inline` Content-Disposition) |
+| GET | `/api/files/download?fileKey=` | Скачивание файла (`attachment` Content-Disposition) |
+| DELETE | `/api/files?fileKey=` | Удалить объект в S3 + запись в БД |
 
 ## Docker
 

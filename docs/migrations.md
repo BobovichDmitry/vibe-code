@@ -84,4 +84,8 @@ npm run migration:generate -- src/migrations/_check
 
 - Таблица `user` (id, login, passwordHash, role, createdAt, updatedAt)
 
-Диалект-агностик — Table API (без голого SQL-ветвления). Для boolean-default в будущем: `type === 'sqlite'` → `0` / `false` для postgres.
+`1787755508525-AddFileEntity.ts` — добавляет таблицу `file` (мета файлов в S3):
+
+- Таблица `file` (id, fileKey unique, originalName, size, contentType, inStorage, userId, createdAt, updatedAt)
+
+Обе миграции диалект-агностик — Table API / ветвление `type === 'sqlite'` (AUTOINCREMENT/datetime/CURRENT_TIMESTAMP) vs postgres (SERIAL/TIMESTAMP/now()). Для boolean-default: sqlite → `(0)`, postgres → `false`.

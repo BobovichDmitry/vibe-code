@@ -2,9 +2,9 @@
 
 ## Описание
 
-Шаблон Nest.js + Vue 3 приложения с авторизацией, админ-панелью управления пользователями и публичной страницей со счётчиком пользователей. Публичная часть показывает текущее количество пользователей. Админ-панель (под авторизацией) позволяет управлять пользователями: просматривать список, создавать новых, удалять (кроме самого себя).
+Шаблон Nest.js + Vue 3 приложения с авторизацией, админ-панелью управления пользователями и файлами, и публичной страницей со счётчиком пользователей. Публичная часть показывает текущее количество пользователей. Админ-панель (под авторизацией): управление пользователями (просмотр, создание, удаление) и файлами (загрузка в S3, фильтр/пагинация, скачивание, удаление).
 
-**Стек**: Nest.js + Express (backend), Vue 3 + Tailwind CSS (frontend), SQLite (dev) / PostgreSQL (prod), JWT auth, Playwright e2e tests (CDP).
+**Стек**: Nest.js + Express (backend), Vue 3 + Tailwind CSS (frontend), SQLite (dev) / PostgreSQL (prod), JWT auth, AWS SDK v3 (S3-совместимое хранилище), Playwright e2e tests (CDP).
 
 ## Стек
 
@@ -17,6 +17,7 @@
 | Стилизация | Tailwind CSS | ^3.4.17 |
 | Маршрутизация | Vue Router (hash history) | ^4.5.0 |
 | HTTP-клиент | Axios | ^1.7.0 |
+| Хранилище файлов | AWS SDK v3 (S3-совместимое) | `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner` |
 | E2E-тесты | Playwright + Chrome CDP | ^1.48.0 |
 | Авторизация | JWT (passport-jwt) | — |
 | Сборка | Vite (frontend) + Nest CLI (backend) | — |
@@ -30,10 +31,12 @@ project/
 │   ├── backend/          # Nest.js API (@Controller + TypeORM)
 │   │   ├── src/auth/     # JWT auth (login, me, password)
 │   │   ├── src/users/    # User CRUD (admin only)
+│   │   ├── src/files/    # Файлы в S3 (presigned-URL, прямая загрузка)
+│   │   ├── src/env.ts    # Загрузчик env (.env → .env.local override)
 │   │   └── src/main.ts   # Entry, SPA fallback, CORS
 │   └── frontend/         # Vue 3 SPA (Vite + Tailwind)
-│       ├── src/api/      # Axios clients (auth, users)
-│       ├── src/views/    # PublicView, LoginView, Admin (ManageUsersView)
+│       ├── src/api/      # Axios clients (auth, users, files)
+│       ├── src/views/    # PublicView, LoginView, Admin (ManageUsers/ManageFiles)
 │       └── src/router/   # Hash router
 ├── e2e/                  # Playwright e2e tests (CDP)
 ├── docker/               # Dockerfile + compose files
@@ -59,6 +62,8 @@ project/
 6. **JWT auth**: Bearer token, 24h expiry. Guard `@UseGuards(JwtAuthGuard)` для защищённых маршрутов.
 7. **Role-based access**: Роли `admin` и `user`. Только `admin` может CRUD пользователей.
 8. **Seeding**: Первый админ создаётся автоматически при пустой БД (из `ADMIN_LOGIN` / `ADMIN_PASSWORD` из env).
+9. **Файлы в S3**: Модуль `FilesModule` работает с S3-совместимым хранилищем через AWS SDK v3 (presigned-PUT/GET + прямая загрузка). Без sharp/ресайза. Конфиг — из `S3_*` env.
+10. **.env.local**: Базовый `.env` под git, `.env.local` (не под git) переопределяет его; внешнее окружение — наивысший приоритет. Загрузчик `apps/backend/src/env.ts`.
 
 ## Порты
 

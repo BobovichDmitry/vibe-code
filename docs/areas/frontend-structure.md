@@ -2,7 +2,7 @@
 
 ## Описание
 
-Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная страница (`PublicView`) показывает текущее количество пользователей. Админка (`ManageUsersView`) — CRUD пользователей. Авторизация через JWT в `localStorage`.
+Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная страница (`PublicView`) показывает текущее количество пользователей. Админка: `ManageUsersView` (CRUD пользователей) и `ManageFilesView` (управление файлами в S3). Авторизация через JWT в `localStorage`.
 
 ## Ключевые файлы
 
@@ -13,20 +13,25 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 | `apps/frontend/src/router/index.ts` | Hash router: public + auth routes |
 | `apps/frontend/src/api/auth.ts` | Axios client for auth endpoints |
 | `apps/frontend/src/api/users.ts` | Axios client for users endpoints |
+| `apps/frontend/src/api/files.ts` | Axios client for files endpoints |
 | `apps/frontend/src/views/PublicView.vue` | Public page (user count) |
 | `apps/frontend/src/views/LoginView.vue` | Login form |
 | `apps/frontend/src/views/admin/ManageUsersView.vue` | Users admin CRUD |
-| `apps/frontend/src/layouts/AdminLayout.vue` | Admin layout with nav |
+| `apps/frontend/src/views/admin/ManageFilesView.vue` | Файлы: таблица + фильтр + загрузчик + скачать/удалить |
+| `apps/frontend/src/layouts/AdminLayout.vue` | Admin layout with nav (Пользователи + Файлы) |
 | `apps/frontend/src/composables/useAuth.ts` | Auth state: login/logout/checkAuth |
 | `apps/frontend/src/style.css` | Tailwind directives |
 
 ## Роуты
 
-| Path | Component | Auth required |
-|------|-----------|---------------|
-| `/` | `PublicView` | No |
-| `/login` | `LoginView` | No |
-| `/admin` | `ManageUsersView` (via AdminLayout) | Yes |
+| Path | Name | Component | Auth required |
+|------|------|-----------|---------------|
+| `/` | `home` | `PublicView` | No |
+| `/login` | `login` | `LoginView` | No (guest) |
+| `/admin` | `admin-users` | `ManageUsersView` (via AdminLayout) | Yes |
+| `/admin/files` | `admin-files` | `ManageFilesView` (via AdminLayout) | Yes |
+
+`/admin` редиректит на `admin-users`. Guard `requireAuth` стоит на родителе `/admin`.
 
 ## API Clients
 
@@ -42,6 +47,15 @@ Vue 3 SPA с Composition API, Tailwind CSS и hash router. Публичная с
 - `updateUser(id, data)` → `PublicUser`
 - `deleteUser(id)` → `void`
 - `getUserCount()` → `{ total, adminCount }` (public, no auth)
+
+### files.ts
+
+- `listFiles({ search?, limit?, offset? })` → `{ items: FileItem[], total }`
+- `deleteFile(fileKey)` → `void` (`DELETE /api/files?fileKey=`)
+- `uploadFile(file, onProgress?)` → `{ fileKey, fileId }` (multipart `file`)
+- `getFileDownloadUrl(fileKey, disposition?)` → presigned GET URL (`GET /api/files/presigned-url`)
+
+`FileItem`: `{ id, fileKey, originalName, size, contentType, inStorage, userId, createdAt, updatedAt }`
 
 ## Auth Flow
 

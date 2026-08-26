@@ -8,9 +8,9 @@
 |------|---------|-------------------|
 | `project-overview.md` | Общая архитектура | Новому агенту для понимания стека |
 | `GETTING_STARTED.md` | Запуск с нуля | Dev, Docker, nginx-proxy |
-| `areas/backend-api-structure.md` | Backend API (auth, users) | CRUD пользователей, JWT auth |
+| `areas/backend-api-structure.md` | Backend API (auth, users, files) | CRUD пользователей, JWT auth, S3-файлы |
 | `areas/auth-structure.md` | Аутентификация | JWT, login/logout, guard |
-| `areas/database-structure.md` | База данных | TypeORM сущности, миграции |
+| `areas/database-structure.md` | База данных | TypeORM сущности (User, File), миграции |
 | `areas/frontend-structure.md` | Frontend (Vue SPA) | Страницы, роутинг, API-клиент |
 | `areas/e2e-testing-structure.md` | E2E-тесты | Playwright, CDP, новые тесты |
 | `areas/admin-panel.md` | Админ-панель | AdminLayout, роуты, навигация |
@@ -57,7 +57,7 @@
 2. **Не вызывать `chrome_devtools_*` напрямую** — вся браузерная работа через `@browser-checker`.
 3. **E2E-тесты импортируйте от `@playwright/test`** напрямую, используйте `{ page }` fixture.
 4. **Всегда используйте полные URL** в E2E (не относительные пути).
-5. **Не коммитьте `.env.local`, `*.sqlite`, `logs/`, `test-results/`** — см. `.gitignore`.
+5. **Не коммитьте `.env.local`, `*.sqlite`, `logs/`, `test-results/`** — см. `.gitignore`. `.env.local` переопределяет `.env` (креды S3/MinIO); шаблон `apps/backend/.env.local.example`.
 6. **JWT-secret**: замените `dev-secret-change-me` в production.
 7. **Порядок маршрутов**: статические пути (`users/count`, `users`) ДО параметризованных (`:id`).
 8. **После изменений в коде** — вызывайте `@docs-maintainer` для обновления документации.

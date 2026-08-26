@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './env';
 import { DataSource } from 'typeorm';
 import { ENTITIES } from './database/entities';
 

@@ -239,6 +239,20 @@ project/
 | `ADMIN_LOGIN` | `admin` | Первый админ (только пустая БД) |
 | `ADMIN_PASSWORD` | `admin` | Первый админ (только пустая БД) |
 | `CORS_ORIGIN` | `http://localhost:5173,...` | CORS allowed origins |
+| `S3_ENDPOINT` | (empty) | S3-совместимое хранилище endpoint (MinIO/S3) |
+| `S3_PUBLIC_URL` | = `S3_ENDPOINT` | Endpoint для presigned-URL (публичный домен) |
+| `S3_REGION` | `us-east-1` | Регион S3 |
+| `S3_BUCKET` | (empty) | Имя бакета |
+| `S3_ACCESS_KEY` | (empty) | Access key id |
+| `S3_SECRET_KEY` | (empty) | Secret access key |
+| `S3_KEY_PREFIX` | (empty) | Префикс-папка для рандомных ключей |
+| `S3_UPLOAD_EXPIRES` | `600` | Срок действия presigned PUT, сек |
+| `S3_DOWNLOAD_EXPIRES` | `86400` | Срок действия presigned GET, сек |
+| `S3_FORCE_PATH_STYLE` | `true` | `forcePathStyle` (true для MinIO/самохоста) |
+
+### .env.local
+
+`.env.local` (не под git) переопределяет `.env` — сюда кладут локальные креды S3/MinIO. Шаблон: `apps/backend/.env.local.example`. Создаётся рядом с `.env`, игнорируется git (`.env.local`, `.env.*.local`). Внешнее окружение (прод-контейнер) имеет наивысший приоритет. Полный список `S3_*` — в корневом `AGENTS.md`.
 
 ### E2E
 
