@@ -38,9 +38,9 @@
           ansible.builtin.pause:
             seconds: 15
 
-        - name: Проверить /api/users/count внутри контейнера app (порт наружу не проброшен)
+        - name: Проверить /api/users/count внутри контейнера backend (порт 3001, наружу не проброшен)
           ansible.builtin.command:
-            cmd: docker compose -p {{ project_name }} -f docker-compose.prod.yml exec -T app wget -qO- http://localhost:3000/api/users/count
+            cmd: docker compose -p {{ project_name }} -f docker-compose.prod.yml exec -T backend wget -qO- http://localhost:3001/api/users/count
             chdir: "{{ project_dir }}/docker"
           register: health_result
           changed_when: false

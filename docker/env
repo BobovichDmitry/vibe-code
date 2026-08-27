@@ -1,12 +1,16 @@
 # =============================================
-# Production configuration
+# Production configuration (backend service)
+# Рендерится ansible из templates/env.j2.
 # =============================================
 
-# === Server ===
-PORT=3000
+# === Server (backend = внутренний API, 3001) ===
+PORT=3001
 
-# === CORS (domain behind nginx-proxy) ===
+# === CORS (домен за nginx-proxy; клиентский fetch браузера → frontend → прокси к backend) ===
 CORS_ORIGIN=https://app.example.com
+
+# === Cookie-auth: secure=true в проде (HTTPS) ===
+COOKIE_SECURE=true
 
 # === Security ===
 # Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -17,13 +21,17 @@ DB_TYPE=postgres
 DB_SYNCHRONIZE=false
 DB_HOST=postgres
 DB_PORT=5432
-DB_USERNAME=postgres
+DB_USERNAME=<project-slug>
 DB_PASSWORD=<generate-a-16+char-random-password>
-DB_DATABASE=app_db
+DB_DATABASE=<project-slug>_db
 
 # === First admin account (only on empty DB) ===
 ADMIN_LOGIN=admin
 ADMIN_PASSWORD=<strong-password>
+
+# === Branding (public, no DB) ===
+BRAND_TITLE=VibeSetup UI
+BRAND_FAVICON_URL=/favicon.svg
 
 # === S3 / object storage ===
 S3_ENDPOINT=
@@ -36,3 +44,8 @@ S3_KEY_PREFIX=
 S3_UPLOAD_EXPIRES=600
 S3_DOWNLOAD_EXPIRES=86400
 S3_FORCE_PATH_STYLE=true
+
+# === nginx-proxy (маршрутизация + Let's Encrypt) — читаются compose для frontend ===
+VIRTUAL_HOST=app.example.com
+LETSENCRYPT_HOST=app.example.com
+LETSENCRYPT_EMAIL=admin@example.com

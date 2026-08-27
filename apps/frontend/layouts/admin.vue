@@ -1,32 +1,20 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { useAuth } from '@/composables/useAuth';
-import ThemeToggle from '@/components/ThemeToggle.vue';
+import { useAuth } from '~/composables/useAuth';
+import ThemeToggle from '~/components/ThemeToggle.vue';
 
 /**
- * AdminLayout — layout админ-панели с ЛЕВЫМ вертикальным сайдбаром
- * (по образцу agent-hosted). Сайдбар содержит:
- *   - вертикальную навигацию (пока только «Пользователи» с иконкой);
- *   - внизу: ThemeToggle, бейдж логина, кнопка «Выйти».
- *
- * Без отдельного хедера внутри сайдбара — навигация начинается сверху.
+ * layouts/admin.vue — layout админ-панели с левым вертикальным сайдбаром.
+ * Применяется к /admin/** через definePageMeta({ layout: 'admin' }).
  *
  * Адаптив:
- *   - `lg+`: сайдбар стационарный (`sticky top-0 h-dvh`, w-64 слева), контент — остаток;
- *   - `< lg`: сайдбар скрыт, открывается бургером в шапке как overlay-drawer
- *     (scrim + выезд слева). Закрытие: клик по scrim / Esc / выбор пункта.
- *
- * Маршрут `/admin` редиректит на `admin-users` (страница «Пользователи»).
+ *   - lg+: сайдбар стационарный (sticky, h-dvh, w-64);
+ *   - < lg: сайдбар скрыт, открывается бургером как overlay-drawer.
  */
 const { user, logout } = useAuth();
 const route = useRoute();
-const router = useRouter();
 
-/** Drawer открыт (актуально только на `< lg`). */
 const sidebarOpen = ref(false);
 
-/** SVG-path иконки (heroicons outline). */
 const ICON_USERS =
   'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z';
 const ICON_ARROW_LEFT =
@@ -39,21 +27,17 @@ const navItems = [
   { name: 'Файлы', path: '/admin/files', icon: ICON_FILES },
 ];
 
-// Активный пункт — точное совпадение пути (каждая страница — лист-роут).
 const isActive = (path: string) => route.path === path;
 
 function navigate(path: string) {
-  router.push(path);
-  // На `< lg` выбор пункта закрывает overlay-drawer.
+  navigateTo(path);
   sidebarOpen.value = false;
 }
 
-/** Esc закрывает drawer. */
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && sidebarOpen.value) sidebarOpen.value = false;
 }
 
-/** Блокируем скролл фона при открытом drawer. */
 let savedBodyOverflow = '';
 watch(sidebarOpen, (open) => {
   if (typeof document === 'undefined') return;
@@ -65,7 +49,6 @@ watch(sidebarOpen, (open) => {
   }
 });
 
-// Смена роута закрывает drawer (кнопка «назад» браузера).
 watch(
   () => route.path,
   () => {
@@ -73,7 +56,6 @@ watch(
   },
 );
 
-/** Переход `< lg` → `lg+`: drawer не нужен, закрываем (иначе невидимый scrim + залоченный скролл). */
 let lgMedia: MediaQueryList | null = null;
 const onLgChange = (e: MediaQueryListEvent) => {
   if (e.matches) sidebarOpen.value = false;
@@ -86,7 +68,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', onKeydown);
+  if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown);
   lgMedia?.removeEventListener('change', onLgChange);
   if (typeof document !== 'undefined') document.body.style.overflow = savedBodyOverflow;
 });
@@ -94,22 +76,17 @@ onUnmounted(() => {
 
 <template>
   <div class="flex min-h-dvh bg-slate-50 transition-colors duration-200 dark:bg-slate-950">
-    <!-- Scrim (только < lg): затемнение под drawer -->
     <div
       v-if="sidebarOpen"
       class="fixed inset-0 z-40 bg-black/40 lg:hidden"
       @click="sidebarOpen = false"
     />
 
-    <!-- Sidebar: на lg+ стационарный (sticky, высота = viewport); на < lg — overlay-drawer.
-         Без хедера внутри — навигация сверху, внизу ThemeToggle + логин + Выйти. -->
     <aside
       class="fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 transform flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950 lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0"
       :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
-      <!-- Вертикальная навигация (с верхним отступом вместо хедера) -->
       <nav class="min-h-0 flex-1 overflow-y-auto px-2 py-4" aria-label="Навигация админ-панели">
-        <!-- Вернуться в приложение -->
         <button
           class="mb-2 flex w-full items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           @click="navigate('/')"
@@ -139,7 +116,6 @@ onUnmounted(() => {
         </ul>
       </nav>
 
-      <!-- Низ сайдбара: ThemeToggle + логин + Выйти -->
       <div class="shrink-0 border-t border-slate-200 px-3 py-3 dark:border-slate-800">
         <div class="mb-2 flex items-center justify-center">
           <ThemeToggle />
@@ -157,7 +133,6 @@ onUnmounted(() => {
       </div>
     </aside>
 
-    <!-- Правая колонка: компактная шапка (бургер на < lg) + контент -->
     <div class="flex min-w-0 flex-1 flex-col">
       <header class="sticky top-0 z-30 shrink-0 border-b border-slate-200/80 bg-white/85 backdrop-blur-xl transition-colors duration-200 dark:border-slate-800 dark:bg-slate-950/85 lg:hidden">
         <div class="flex items-center gap-2 px-3 py-2.5 sm:px-6">
@@ -173,7 +148,7 @@ onUnmounted(() => {
       </header>
 
       <main class="mx-auto w-full max-w-7xl flex-1 px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <router-view />
+        <slot />
       </main>
     </div>
   </div>

@@ -3,19 +3,23 @@
 #   cp vars.example.yml vars.yml
 #   ansible-vault encrypt vars.yml
 # Запуск: ansible-playbook playbook.yml -e @vars.yml
+#
+# Портируемость: project_name — слаг ВАШЕГО проекта (без хардкода). db_username
+# и db_name по умолчанию выводятся из project_name (см. group_vars/all.yml),
+# но можно переопределить здесь.
 # =============================================================================
 
 server_ip: "203.0.113.10"
 domain: "app.example.com"
-project_name: "gmoreva-setup"
+# Слаг проекта (исходники → /opt/<project_name>, БД → <project_name>_db)
+project_name: "my-project"
 
-project_dir: "/opt/vibesetup"
-archive_path: "/opt/vibesetup.tar.gz"
+# Пути (по умолчанию выводятся из project_name; раскомментируйте для переопределения)
+# project_dir: "/opt/my-project"
+# archive_path: "/opt/my-project.tar.gz"
 proxy_dir: "/opt/nginx-proxy"
 
-db_username: "vibesetup"
 db_password: "super_secret_db_password_2024"
-db_name: "vibesetup_db"
 
 jwt_secret: "f3a9b2c1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1"
 

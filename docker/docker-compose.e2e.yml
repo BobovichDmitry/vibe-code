@@ -20,7 +20,7 @@ services:
     environment:
       # Point to the running app (Docker service name or host IP)
       E2E_BASE_URL: ${E2E_BASE_URL:-http://host.docker.internal:3000}
-      E2E_API_URL: ${E2E_API_URL:-http://host.docker.internal:3000/api}
+      E2E_API_URL: ${E2E_API_URL:-http://host.docker.internal:3001/api}
       # Remote Chrome CDP connection
       BROWSER_PORT: ${BROWSER_PORT:-9222}
       REMOTE_CHROME_HOST: ${REMOTE_CHROME_HOST:-host.docker.internal}

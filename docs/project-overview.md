@@ -33,13 +33,15 @@ project/
 │   │   ├── src/users/    # User CRUD (admin only)
 │   │   ├── src/files/    # Файлы в S3 (presigned-URL, прямая загрузка)
 │   │   ├── src/env.ts    # Загрузчик env (.env → .env.local override)
-│   │   └── src/main.ts   # Entry, SPA fallback, CORS
-│   └── frontend/         # Vue 3 SPA (Vite + Tailwind)
-│       ├── src/api/      # Axios clients (auth, users, files)
-│       ├── src/views/    # PublicView, LoginView, Admin (ManageUsers/ManageFiles)
-│       └── src/router/   # Hash router
+│   │   └── src/main.ts   # Entry, cookie-parser, CORS, порт 3001
+│   └── frontend/         # Nuxt 3 SSR (Nitro + Tailwind, история-роутинг)
+│       ├── pages/         # Nuxt file-based routing (index, login, admin/index, admin/files)
+│       ├── layouts/      # default.vue + admin.vue (сайдбар)
+│       ├── composables/   # useApi (SSR $fetch), useAuth (cookie JWT), useBranding, useTheme
+│       ├── middleware/    # auth, guest
+│       └── plugins/       # theme.server / theme.client (SSR-safe тема, без FOUC)
 ├── e2e/                  # Playwright e2e tests (CDP)
-├── docker/               # Dockerfile + compose files
+├── docker/               # Dockerfile.frontend + Dockerfile.backend + compose
 ├── scripts/              # Helpers: log-runner, kill-service
 └── package.json          # Root workspace
 ```
@@ -48,18 +50,18 @@ project/
 
 | Приложение | Entry point | Описание |
 |-----------|-------------|----------|
-| Backend | `apps/backend/src/main.ts` | Nest.js bootstrap, SPA-fallback, CORS |
-| Frontend | `apps/frontend/src/main.ts` | Vue app creation + router mount |
-| E2E | `e2e/playwright.config.ts` | Playwright config (chromium-remote) |
+| Backend | `apps/backend/src/main.ts` | Nest.js bootstrap, cookie-parser, CORS, порт 3001 |
+| Frontend | `apps/frontend/app.vue` | Nuxt SSR корень (брендинг useHead + NuxtLayout) |
+| E2E | `e2e/playwright.config.mts` | Playwright config (chromium-remote) |
 
 ## Архитектурные решения
 
-1. **Единый контейнер**: Frontend собирается в `dist/`, Nest.js сервит статику + API.
+1. **Два отдельных сервиса**: frontend (Nuxt 3 SSR/Nitro, порт 3000, edge) + backend (Nest API, порт 3001, внутренний). Nuxt проксирует `/api/**` → backend (nitro `routeRules`). Nest больше не раздаёт статику — чистый API. Frontend можно вынести на отдельный сервер сменой `NUXT_API_BASE`.
 2. **API prefix**: `setGlobalPrefix('api')` — все API-маршруты под `/api/*`.
-3. **Hash router**: `createWebHashHistory()` — SPA работает без серверного fallback.
-4. **Database abstraction**: `DB_TYPE=sqlite` или `postgres` через `.env`. TypeORM `synchronize: true`.
+3. **History-роутинг (Nuxt)**: file-based routing, хеш-роутинг убран. Публичная часть — полноценный SSR (`useAsyncData`/`useHead`).
+4. **Database abstraction**: `DB_TYPE=sqlite` или `postgres` через `.env`. TypeORM `synchronize: true` (dev) / миграции (prod).
 5. **E2E через CDP**: Playwright подключается к реальному Chrome (`--remote-debugging-port=9222`), не к headless.
-6. **JWT auth**: Bearer token, 24h expiry. Guard `@UseGuards(JwtAuthGuard)` для защищённых маршрутов.
+6. **JWT auth (cookie + Bearer)**: httpOnly cookie `auth_token` (ставит `/api/auth/login`) **И** Bearer — обратно-совместимо. 24h expiry. `POST /api/auth/logout` чистит cookie.
 7. **Role-based access**: Роли `admin` и `user`. Только `admin` может CRUD пользователей.
 8. **Seeding**: Первый админ создаётся автоматически при пустой БД (из `ADMIN_LOGIN` / `ADMIN_PASSWORD` из env).
 9. **Файлы в S3**: Модуль `FilesModule` работает с S3-совместимым хранилищем через AWS SDK v3 (presigned-PUT/GET + прямая загрузка). Без sharp/ресайза. Конфиг — из `S3_*` env.
@@ -69,8 +71,8 @@ project/
 
 | Порт | Назначение |
 |------|-----------|
-| 3000 | Backend (Nest.js) — production и dev |
-| 5173 | Frontend dev server (Vite) |
+| 3000 | Frontend (Nuxt SSR, edge) — production и dev |
+| 3001 | Backend (Nest API, внутренний) — production и dev |
 | 9222 | Chrome CDP (для e2e тестов) |
 | 8080 | Playwright UI (в Docker e2e) |
 

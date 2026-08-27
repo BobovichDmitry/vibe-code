@@ -2,8 +2,14 @@
 export default {
   darkMode: 'class',
   content: [
-    './index.html',
-    './src/**/*.{vue,js,ts,jsx,tsx}',
+    './app.vue',
+    './error.vue',
+    './pages/**/*.{vue,js,ts}',
+    './layouts/**/*.{vue,js,ts}',
+    './components/**/*.{vue,js,ts}',
+    './composables/**/*.{js,ts}',
+    './plugins/**/*.{js,ts}',
+    './nuxt.config.{js,ts}',
   ],
   theme: {
     extend: {

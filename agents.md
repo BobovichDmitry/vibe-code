@@ -2,22 +2,21 @@
 
 ## Architecture
 
-**Monorepo** (npm workspaces) with Nest.js backend, Vue.js frontend, Playwright e2e tests. Single Docker container in production — frontend built into Nest.js static.
+**Monorepo** (npm workspaces) с Nest.js backend, **Nuxt 3 frontend (SSR)**, Playwright e2e. В проде — **два отдельных сервиса**: frontend (Nuxt/Nitro, порт **3000**, edge за nginx-proxy) и backend (Nest API, порт **3001**, внутренний). Nuxt проксирует `/api/**` → backend (nitro `routeRules`). Frontend можно вынести на отдельный сервер без правок кода (смена `NUXT_API_BASE`).
 
 ```
 vibe-setup-ui/
 ├── apps/
 │   ├── backend/          # Nest.js API (/api/auth, /api/users)
 │   │   ├── src/
-│   │   │   ├── main.ts                 # Entry, global prefix 'api', SPA serve
+│   │   │   ├── main.ts                 # Entry, global prefix 'api', cookie-parser, порт 3001
 │   │   │   ├── app.module.ts           # Root module, seeds DB on startup
 │   │   │   ├── database/               # SQLite/PostgreSQL TypeORM config
-│   │   │   ├── auth/                   # JWT auth (login, me, password)
-│   │   │   │   ├── entities/admin.entity.ts
-│   │   │   │   ├── auth.controller.ts
+│   │   │   ├── auth/                   # JWT auth (login + set cookie, me, password, logout)
+│   │   │   │   ├── auth.controller.ts   # set/clear httpOnly cookie `auth_token`
 │   │   │   │   ├── auth.service.ts
-│   │   │   │   ├── jwt.strategy.ts
-│   │   │   │   └── jwt-auth.guard.ts
+│   │   │   │   ├── jwt.strategy.ts       # Bearer + cookie extractors
+│   │   │   │   └── jwt-auth.guard.ts     # Bearer + cookie extractors
 │   │   │   ├── files/                  # Files in S3 (presigned-URL, upload)
 │   │   │   │   ├── entities/file.entity.ts
 │   │   │   │   ├── file.service.ts
@@ -29,48 +28,44 @@ vibe-setup-ui/
 │   │   │   │   ├── users.service.ts
 │   │   │   │   └── users.module.ts
 │   │   │   └── env.ts                  # Env loader (.env → .env.local override)
-│   │   └── .env                        # DB_TYPE, DB_* settings, PORT, S3_*
-│   └── frontend/         # Vue 3 + Tailwind (SPA)
-│       ├── src/
-│       │   ├── api/auth.ts              # Axios client for auth
-│       │   ├── api/users.ts             # Axios client for users
-│       │   ├── api/files.ts             # Axios client for files (S3)
-│       │   ├── components/              # Shared components
-│       │   ├── views/PublicView.vue     # Public page (user count)
-│       │   ├── views/LoginView.vue      # Login form
-│       │   ├── views/admin/ManageUsersView.vue  # Users CRUD
-│       │   ├── views/admin/ManageFilesView.vue  # Files (S3) CRUD
-│       │   ├── layouts/AdminLayout.vue  # Admin layout (sidebar: Users + Files)
-│       │   ├── router/index.ts          # Hash router
-│       │   ├── composables/useAuth.ts   # Auth state
-│       │   └── style.css                # Tailwind directives
-│       ├── vite.config.ts               # proxy /api → localhost:3000
-│       └── .env                         # VITE_API_BASE_URL=/
+│   │   └── .env                        # DB_TYPE, DB_* settings, PORT=3001, S3_*, COOKIE_SECURE
+│   └── frontend/         # Nuxt 3 (SSR) + Tailwind
+│       ├── nuxt.config.ts             # routeRules прокси /api → backend:3001, runtimeConfig
+│       ├── app.vue                    # Корень: брендинг (useHead) + NuxtLayout/NuxtPage
+│       ├── pages/                     # file-based routing (history): index, login, admin/{index,files}
+│       ├── layouts/                   # default.vue (хедер), admin.vue (сайдбар)
+│       ├── components/ThemeToggle.vue
+│       ├── composables/               # useApi (SSR $fetch), useAuth (cookie), useBranding, useTheme
+│       ├── middleware/                # auth.ts, guest.ts
+│       ├── plugins/                   # theme.server.ts (без FOUC), theme.client.ts
+│       ├── assets/css/style.css       # Tailwind directives
+│       └── .env                        # NUXT_PUBLIC_API_BASE, NUXT_API_BASE
 ├── e2e/                    # Playwright e2e tests (remote Chrome CDP)
 │   ├── fixtures.ts          # test.extend: connectedBrowser, connectedPage
 │   ├── global-setup.ts      # Checks Chrome CDP, seeds DB via API
-│   ├── tests/basic.spec.ts  # Login → create user → check count
-│   ├── playwright.config.ts
-│   └── .env                 # BROWSER_PORT, REMOTE_CHROME_HOST, E2E_*
+│   ├── tests/basic.spec.ts  # Login → create user → check count (history-роутинг, cookie)
+│   ├── playwright.config.mts
+│   └── .env                 # BROWSER_PORT, REMOTE_CHROME_HOST, E2E_BASE_URL=:3000, E2E_API_URL=:3001
 ├── docker/
-│   ├── Dockerfile           # Multi-stage: frontend build → backend build → prod
-│   ├── docker-compose.yml   # Dev: App + PostgreSQL (5432 exposed)
-│   ├── docker-compose.prod.yml  # Prod: App + PostgreSQL (5432 NOT exposed, reverse-proxy network)
+│   ├── Dockerfile.frontend # Nuxt build → Nitro server (порт 3000)
+│   ├── Dockerfile.backend  # Nest build (порт 3001)
+│   ├── docker-compose.yml   # Dev: frontend + backend + postgres (порты проброшены)
+│   ├── docker-compose.prod.yml  # Prod: frontend (VIRTUAL_HOST) + backend (internal) + postgres
 │   ├── docker-compose.e2e.yml  # E2E tests with Playwright UI (:8080)
-│   ├── docker-compose.nginx-proxy.yml  # Prod with nginx-proxy + Let's Encrypt (legacy variant)
-│   └── env                  # Production env template
+│   ├── docker-compose.nginx-proxy.yml  # Legacy variant
+│   └── env                  # Production env template (backend + compose-интерполяция)
 ├── ansible/                # Ansible-деплой (запуск НА сервере)
 │   ├── ansible.cfg          # inventory, host_key_checking=False
 │   ├── inventory.ini        # localhost, ansible_connection=local
-│   ├── group_vars/all.yml   # Переменные (плейсхолдеры)
+│   ├── group_vars/all.yml   # Переменные (плейсхолдеры/выводимые из project_name)
 │   ├── vars.example.yml     # Пример заполнения переменных
-│   ├── playbook.yml         # Основной плейбук (tags: deps, proxy, deploy, healthcheck)
+│   ├── playbook.yml         # Плейбук (tags: deps, proxy, deploy, healthcheck на backend:3001)
 │   ├── roles/               # docker, nginx_proxy, app
-│   ├── templates/           # env.j2, compose-proxy.yml.j2
+│   ├── templates/           # env.j2 (PORT=3001, CORS, COOKIE_SECURE), compose-proxy.yml.j2
 │   └── README.md            # Инструкция: sftp архива + запуск на сервере
 ├── docs/                   # Documentation
 │   ├── GETTING_STARTED.md   # Full setup guide (Docker, nginx-proxy, local)
-│   ├── deployment.md        # Deploy, env vars, ports, checklists
+│   ├── deployment.md        # Deploy, env vars, ports (3000/3001), checklists
 │   ├── testing-guide.md     # Testing guide
 │   ├── agents.md            # Agent quick reference
 │   ├── project-overview.md  # Architecture overview
@@ -79,12 +74,14 @@ vibe-setup-ui/
 │       ├── backend-api-structure.md
 │       ├── auth-structure.md
 │       ├── database-structure.md
-│       ├── frontend-structure.md
+│       ├── frontend-structure.md   # Nuxt 3 SSR
+│       ├── nuxt-migration.md       # Гайд миграции Vite SPA → Nuxt 3 SSR
 │       ├── admin-panel.md
 │       └── e2e-testing-structure.md
 ├── scripts/
 │   ├── log-runner.mjs       # Runs service with logging to logs/<name>.log
 │   └── kill-service.mjs     # Kills service by PID file
+├── deploy.sh               # Локальный деплой (env-driven, PROJECT_NAME обязателен)
 ├── package.json             # Root workspace, all scripts
 └── agents.md                # ← This file
 ```
@@ -118,10 +115,11 @@ When debugging a problem, read the logs instead:
 | Command | Description |
 |---------|-------------|
 | `npm install` | Install all workspace deps |
-| `npm run build:frontend` | Build Vue → `apps/frontend/dist/` |
+| `npm run build:frontend` | Build Nuxt → `apps/frontend/.output/` (Nitro server) |
 | `npm run build:backend` | Build Nest → `apps/backend/dist/` |
 | `npm run build` | Both builds |
-| `npm run start:prod` | Production (Nest serves static frontend) |
+| `npm run typecheck` | `nuxt typecheck` + `tsc --noEmit` (оба workspace) |
+| `npm run start:prod` | Production backend (Nest, 3001) — frontend отдельным процессом (Nitro) |
 | `npm run test:e2e` | Run Playwright tests against running app |
 | `npm run db:reset` | Reset DB (dev: drop + synchronize) |
 | `npm run db:recreate` | Recreate DB (prod-prep: drop + миграции) |
@@ -145,11 +143,12 @@ When debugging a problem, read the logs instead:
 | `DB_USERNAME` | `postgres` | PostgreSQL user |
 | `DB_PASSWORD` | `postgres` | PostgreSQL password |
 | `DB_DATABASE` | `app_db` | PostgreSQL database name |
-| `PORT` | `3000` | Backend port |
+| `PORT` | `3001` | Backend (внутренний API) port |
 | `JWT_SECRET` | `dev-secret-change-me` | **Change in production!** |
 | `ADMIN_LOGIN` | `admin` | First admin (empty DB only) |
 | `ADMIN_PASSWORD` | `admin` | First admin (empty DB only) |
-| `CORS_ORIGIN` | `http://localhost:5173,...` | CORS allowed origins |
+| `CORS_ORIGIN` | `http://localhost:3000` | CORS allowed origins (Nuxt-origin) |
+| `COOKIE_SECURE` | (empty) | Cookie-auth: secure=true в проде (HTTPS). Auto: false в dev. |
 | `S3_ENDPOINT` | (empty) | S3-совместимое хранилище endpoint (напр. `https://s3.amazonaws.com`, MinIO) |
 | `S3_PUBLIC_URL` | = `S3_ENDPOINT` | Endpoint для presigned-URL'ов (публичный домен, если отличается) |
 | `S3_REGION` | `us-east-1` | Регион S3 |
@@ -164,23 +163,24 @@ When debugging a problem, read the logs instead:
 ### Frontend (`apps/frontend/.env`)
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VITE_API_BASE_URL` | `/` | API base URL (proxy in dev, same-origin in prod) |
+| `NUXT_PUBLIC_API_BASE` | `/api` | Клиентский base (через Nitro прокси) |
+| `NUXT_API_BASE` | `http://localhost:3001/api` | Серверный base при SSR (прямой fetch к backend) |
 
 ### E2E (`e2e/.env`)
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BROWSER_PORT` | `9222` | Chrome remote debugging port |
 | `REMOTE_CHROME_HOST` | `localhost` | Chrome host for CDP |
-| `E2E_BASE_URL` | `http://localhost:5173` | App URL (dev frontend port) |
-| `E2E_API_URL` | `http://localhost:3000/api` | API URL for seeding |
+| `E2E_BASE_URL` | `http://localhost:3000` | App URL (Nuxt SSR edge) |
+| `E2E_API_URL` | `http://localhost:3001/api` | API URL (backend Nest) |
 
 **REMOTE_DEBUGGING_URL** is derived: `http://${REMOTE_CHROME_HOST}:${BROWSER_PORT}`
 
 ## Key Design Decisions
 
-1. **Single container**: Frontend is built into `apps/frontend/dist/` and served by Nest.js static middleware. SPA fallback sends `index.html` for non-API routes.
+1. **Два отдельных сервиса**: frontend (Nuxt SSR/Nitro, порт 3000, edge) + backend (Nest API, порт 3001, внутренний). Nuxt проксирует `/api/**` → `http://backend:3001` (nitro `routeRules`). Nest больше не раздаёт статику — чистый API. Frontend можно вынести на отдельный сервер сменой `NUXT_API_BASE` (без правок кода). См. `docs/areas/nuxt-migration.md`.
 
-2. **API prefix**: `setGlobalPrefix('api')` + `@Controller('auth')` / `@Controller('users')` — all API routes at `/api/*`.
+2. **API prefix**: `setGlobalPrefix('api')` + `@Controller('auth')` / `@Controller('users')` — все API routes на `/api/*`.
 
 3. **Database abstraction**: Two connectors (SQLite/PostgreSQL) via `DB_TYPE` env. Two modes: dev uses `synchronize: true` (fast iteration), prod uses migrations (`DB_SYNCHRONIZE=false` → `migrationsRun: true`, auto-run pending at startup). SQLite for local/dev, PostgreSQL for production. Baseline migration (`InitSchema`) creates the full schema in one migration. TypeORM CLI scripts: `migration:generate/run/revert`, `db:recreate`.
 
@@ -188,11 +188,11 @@ When debugging a problem, read the logs instead:
 
 5. **Playwright fixtures**: Custom `connectedBrowser` and `connectedPage` fixtures manage the CDP connection. Pages ARE closed after each test to keep the browser clean.
 
-6. **JWT Auth**: Bearer token, 24h expiry. Guard `@UseGuards(JwtAuthGuard)` for protected routes.
+6. **JWT Auth (cookie + Bearer)**: httpOnly cookie `auth_token` (ставит `/api/auth/login`) **И** Bearer-заголовок — обратно-совместимо. Guard `@UseGuards(JwtAuthGuard)` принимает оба. 24h expiry. `POST /api/auth/logout` чистит cookie.
 
 7. **Role-based access**: Roles `admin` and `user`. Only `admin` can CRUD users.
 
-8. **Hash router**: Vue uses `createWebHashHistory` to avoid server-side route config for SPA.
+8. **History-роутинг (Nuxt)**: file-based routing, `createWebHashHistory` убран. Переходы — real history (`/admin`, `/login`). Публичная часть — полноценный SSR (`useAsyncData`/`useHead`).
 
 9. **Seeding**: First admin created automatically on empty DB (from `ADMIN_LOGIN` / `ADMIN_PASSWORD` env vars).
 
@@ -202,9 +202,10 @@ When debugging a problem, read the logs instead:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/auth/login` | Login → `{ access_token }` |
-| GET | `/api/auth/me` | Current user (JWT required) |
+| POST | `/api/auth/login` | Login → `{ access_token }` + ставит httpOnly cookie `auth_token` |
+| GET | `/api/auth/me` | Current user (JWT из cookie или Bearer) |
 | PATCH | `/api/auth/password` | Change password (JWT required) |
+| POST | `/api/auth/logout` | Clears httpOnly cookie `auth_token` |
 
 ### Users
 
@@ -235,7 +236,7 @@ When debugging a problem, read the logs instead:
 ## Docker
 
 ```bash
-# Dev (single container)
+# Dev (frontend + backend + postgres, порты проброшены)
 cd docker && docker compose up -d
 
 # Production via ansible (запуск НА сервере — см. ansible/README.md)
@@ -246,18 +247,18 @@ ansible-playbook playbook.yml -e @vars.yml
 cd docker && docker compose -f docker-compose.e2e.yml up e2e
 ```
 
-- **`docker-compose.yml`** (dev): app + PostgreSQL, порт `5432` проброшен наружу.
-- **`docker-compose.prod.yml`** (prod): app + PostgreSQL, `5432` **не** проброшен,
-  external-сеть `reverse-proxy` (nginx-proxy), `VIRTUAL_HOST`/`LETSENCRYPT_*`.
-  Используется ansible-плейбуком. Сборка — на сервере внутри Docker (multi-stage Dockerfile).
+- **`docker-compose.yml`** (dev): frontend (3000) + backend (3001) + PostgreSQL (5432 проброшен).
+- **`docker-compose.prod.yml`** (prod): frontend (VIRTUAL_HOST, 3000, reverse-proxy) +
+  backend (3001, internal, БЕЗ VIRTUAL_HOST) + PostgreSQL (5432 НЕ проброшен).
+  Nuxt проксирует `/api/**` → `http://backend:3001`. Используется ansible-плейбуком.
+  Сборка — на сервере внутри Docker (split Dockerfile'ы).
 - **nginx-proxy** (`nginxproxy/nginx-proxy` + `nginxproxy/acme-companion`):
   общий reverse-proxy один раз на сервере (тег `proxy`). Мульти-проект —
-  каждый контейнер подключается к `reverse-proxy` и объявляет свой `VIRTUAL_HOST`.
+  каждый frontend-контейнер подключается к `reverse-proxy` и объявляет свой `VIRTUAL_HOST`.
 
-Dockerfile is multi-stage:
-1. **frontend-builder**: Install frontend deps, `npm run build:frontend`
-2. **backend-builder**: Install backend deps, `npm run build:backend`
-3. **production**: Only prod deps + built artifacts from stages 1-2
+Dockerfile's (split, multi-stage):
+- **`Dockerfile.frontend`**: deps → `nuxt build` → production (Nitro server, 3000).
+- **`Dockerfile.backend`**: deps → `nest build` → production (Nest API, 3001).
 
 ## Writing E2E Tests
 
@@ -265,8 +266,8 @@ Tests import from `../fixtures` (NOT from `@playwright/test` directly):
 
 ```typescript
 import { test, expect } from '../fixtures';
-const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:5173';
-const API_URL = process.env.E2E_API_URL || 'http://localhost:3000/api';
+const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3000';
+const API_URL = process.env.E2E_API_URL || 'http://localhost:3001/api';
 
 test('example', async ({ connectedPage }) => {
   await connectedPage.goto(`${BASE_URL}/`);
@@ -274,6 +275,8 @@ test('example', async ({ connectedPage }) => {
   expect(await connectedPage.locator('h1').first().textContent()).toContain('VibeSetup UI');
 });
 ```
+
+History-роутинг (без `#`): URL как `/admin`, `/login`. Cookie-auth: Playwright context хранит cookie после `POST /api/auth/login` автоматически.
 
 You do not need to run e2e test after every change. Only when user asks you
 
@@ -285,11 +288,11 @@ You do not need to run e2e test after every change. Only when user asks you
 // ✅ Correct — delegate to subagent
 subagent({
   agent: "browser-checker",
-  task: "Navigate to http://localhost:5173 and take a screenshot"
+  task: "Navigate to http://localhost:3000 and take a screenshot"
 })
 
 // ❌ WRONG — never call chrome_devtools_* directly
-chrome_devtools_navigate_page({ url: "http://localhost:5173" })
+chrome_devtools_navigate_page({ url: "http://localhost:3000" })
 ```
 
 ## Subagents
@@ -307,7 +310,7 @@ Project-local subagents (stored in `.pi/agents/`). Call with `@<name> <message>`
 
 ```text
 User: проверь как выглядит публичная страница
-Agent: subagent({ agent: "browser-checker", task: "Navigate to http://localhost:5173, take screenshot of public page" })
+Agent: subagent({ agent: "browser-checker", task: "Navigate to http://localhost:3000, take screenshot of public page" })
 Subagent: opens browser → takes screenshot → checks console → reports findings
 ```
 
@@ -352,8 +355,11 @@ The fixer runs tests, analyzes failures, fixes the root cause (in test files or 
 
 ## Common Issues
 
-- **`EADDRINUSE` on port 3000**: Run `npm run kill:backend` (uses PID file) or find PID with `netstat -ano | grep :3000`
-- **Frontend not served**: Must run `npm run build:frontend` first. Backend auto-detects `../frontend/dist`.
+- **`EADDRINUSE` on port 3001 (backend)**: Run `npm run kill:backend` (uses PID file) or find PID with `netstat -ano | grep :3001`
+- **`EADDRINUSE` on port 3000 (frontend/Nuxt)**: Run `npm run kill:frontend` or find PID with `netstat -ano | grep :3000`
+- **Frontend not built**: `npm run build:frontend` → `apps/frontend/.output/` (Nitro). Backend больше не раздаёт статику.
+- **`/api` 404 в браузере**: Nuxt не проксирует — проверь `routeRules` в `nuxt.config.ts` и `NUXT_API_BASE`.
+- **401 на /admin под SSR**: cookie не проксируется — проверь `useApi` (`useRequestHeaders(['cookie'])`).
 - **CDP connection fails**: Chrome must be launched with `--remote-debugging-port=9222`
 - **Tests can't navigate**: Use full URLs (not relative) — `baseURL` from config doesn't apply to CDP-connected pages
 - **Check logs for errors**: `logs/backend.log` and `logs/frontend.log` — agent reads these; to start/stop a service, ask the user to run `npm run dev:*:log` / `npm run kill:*` (unless the user explicitly told you to do it)

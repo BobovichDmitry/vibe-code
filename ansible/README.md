@@ -20,7 +20,7 @@ tar --exclude=node_modules \
     --exclude=.git \
     --exclude=playwright-report \
     --exclude=test-results \
-    -czf vibesetup.tar.gz .
+    -czf my-project.tar.gz .
 ```
 
 > Сборка приложения (frontend + backend) идёт **на сервере** внутри Docker
@@ -30,7 +30,7 @@ tar --exclude=node_modules \
 
 ```bash
 sftp root@<server_ip>
-sftp> put vibesetup.tar.gz /opt/
+sftp> put my-project.tar.gz /opt/
 sftp> exit
 ```
 
@@ -45,7 +45,7 @@ apt update && apt install -y ansible
 
 # Перейти в папку с ansible-скриптами
 # (ansible/ — часть репозитория, значит уже в архиве)
-cd /opt/vibesetup/ansible
+cd /opt/my-project/ansible
 
 # Заполнить переменные (скопировать пример → отредактировать → зашифровать)
 cp vars.example.yml vars.yml
@@ -81,12 +81,12 @@ ansible-playbook playbook.yml --tags healthcheck -e @vars.yml
 |------------|----------|--------|
 | `server_ip` | IP-адрес сервера | `203.0.113.10` |
 | `domain` | Домен приложения | `app.example.com` |
-| `project_dir` | Путь распаковки исходников | `/opt/vibesetup` |
-| `archive_path` | Путь к архиву на сервере | `/opt/vibesetup.tar.gz` |
+| `project_dir` | Путь распаковки исходников | `/opt/my-project` |
+| `archive_path` | Путь к архиву на сервере | `/opt/my-project.tar.gz` |
 | `proxy_dir` | Путь к nginx-proxy compose | `/opt/nginx-proxy` |
-| `db_username` | PostgreSQL пользователь | `vibesetup` |
+| `db_username` | PostgreSQL пользователь | `my-project` |
 | `db_password` | PostgreSQL пароль | (секрет) |
-| `db_name` | PostgreSQL база | `vibesetup_db` |
+| `db_name` | PostgreSQL база | `my-project_db` |
 | `jwt_secret` | JWT-секрет | (секрет, 32+ байт) |
 | `admin_login` | Логин первого админа | `admin` |
 | `admin_password` | Пароль первого админа | (секрет) |
@@ -122,16 +122,18 @@ nginx-proxy + acme-companion поднимаются **один раз** на с�
 ansible-playbook playbook.yml --tags healthcheck -e @vars.yml
 
 # Логи приложения
-cd /opt/vibesetup/docker
-docker compose -f docker-compose.prod.yml logs -f app
+cd /opt/my-project/docker
+docker compose -f docker-compose.prod.yml logs -f frontend backend
 
 # Логи nginx-proxy
 cd /opt/nginx-proxy
 docker compose -f compose-proxy.yml logs -f nginx-proxy
 
-# Проверка вручную
+# Проверка вручную (frontend edge на 3000 за nginx-proxy)
 curl http://localhost:3000/api/users/count
 # Ожидается: {"total":1,...} (HTTP 200)
+# Или напрямую в backend (внутренний, 3001):
+# docker compose -f docker-compose.prod.yml exec backend wget -qO- http://localhost:3001/api/users/count
 
 curl https://<domain>/api/users/count
 # После выпуска сертификата — HTTP 200

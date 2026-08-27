@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { useAuth } from '@/composables/useAuth';
-import { useBranding } from '@/composables/useBranding';
+import { useAuth } from '~/composables/useAuth';
+import { useBranding } from '~/composables/useBranding';
 
-const router = useRouter();
+// /login — гостевая страница: если уже авторизован, редирект в /admin.
+definePageMeta({ middleware: ['guest'] });
+
 const { login, loading, error } = useAuth();
 const { title } = useBranding();
 
@@ -14,7 +14,7 @@ const submit = async () => {
   if (!loginForm.value.login || !loginForm.value.password) return;
   const ok = await login(loginForm.value);
   if (ok) {
-    router.push('/admin');
+    await navigateTo('/admin');
   }
 };
 </script>
@@ -58,7 +58,7 @@ const submit = async () => {
         </form>
 
         <div class="mt-6 text-center">
-          <router-link to="/" class="text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300">← Вернуться на главную</router-link>
+          <NuxtLink to="/" class="text-sm text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300">← Вернуться на главную</NuxtLink>
         </div>
       </div>
     </div>

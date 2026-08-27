@@ -1,34 +1,56 @@
 # =============================================================================
-# Production docker-compose для VibeSetup UI
-# Используется ansible-плейбуком при деплое на сервер.
+# Production docker-compose (используется ansible-плейбуком при деплое).
 #
-# Отличия от docker-compose.yml (dev):
-#   - PostgreSQL порт 5432 НЕ пробрасывается наружу (только внутренняя сеть)
-#   - App подключается к external-сети reverse-proxy (nginx-proxy)
-#   - App объявляет VIRTUAL_HOST / LETSENCRYPT_HOST / LETSENCRYPT_EMAIL
-#   - DB_SYNCHRONIZE=false → миграции при старте (задача 03)
-#   - env_file: ./env (рендерится ansible из templates/env.j2)
+# Три сервиса:
+#   frontend (Nuxt SSR, 3000) — edge, за nginx-proxy (VIRTUAL_HOST + Let's Encrypt);
+#   backend  (Nest API, 3001)  — внутренний, БЕЗ VIRTUAL_HOST (внешний трафик
+#                               идёт только на frontend; Nuxt проксирует /api/**);
+#   postgres                  — без проброса 5432 наружу.
+#
+# frontend зависит от backend; Nuxt проксирует /api/** → http://backend:3001
+# (nitro routeRules, цель из NUXT_API_BASE).
+#
+# env_file ./env рендерится ansible из templates/env.j2 (backend-переменные).
+# frontend-переменные (NUXT_*) — ниже в environment (не секреты).
 # =============================================================================
 
 services:
-  app:
+  frontend:
     build:
       context: ../
-      dockerfile: docker/Dockerfile
-    # НЕТ проброса портов — nginx-proxy маршрутизирует через reverse-proxy сеть
+      dockerfile: docker/Dockerfile.frontend
     env_file:
       - ./env
     environment:
-      # nginx-proxy маршрутизация + Let's Encrypt
+      # nginx-proxy маршрутизация + Let's Encrypt (только frontend — edge).
       VIRTUAL_HOST: ${VIRTUAL_HOST}
       LETSENCRYPT_HOST: ${LETSENCRYPT_HOST}
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      # SSR-фетч к backend (имя сервиса = 'backend', внутренняя сеть).
+      NUXT_API_BASE: http://backend:3001/api
+      # Клиентский base — относительный /api (браузер → свой origin → Nitro прокси).
+      NUXT_PUBLIC_API_BASE: /api
     networks:
       - default
       - reverse-proxy
     depends_on:
-      postgres:
-        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile.backend
+    # НЕТ VIRTUAL_HOST — backend внутренний, наружу не торчит.
+    # НЕТ проброса порта — только внутренняя сеть.
+    env_file:
+      - ./env
+    environment:
+      # CORS = домен (за nginx-proxy) для клиентского fetch.
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      # Cookie-auth: secure в проде (HTTPS за nginx-proxy).
+      COOKIE_SECURE: "true"
     restart: unless-stopped
 
   postgres:
@@ -37,7 +59,7 @@ services:
       POSTGRES_DB: ${DB_DATABASE}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-    # НЕТ проброса 5432 — только внутренняя сеть
+    # НЕТ проброса 5432 — только внутренняя сеть.
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:

@@ -40,7 +40,9 @@ SSH_PORT="${SSH_PORT:-22}"
 ADMIN_LOGIN="${ADMIN_LOGIN:-admin}"
 BRAND_TITLE="${BRAND_TITLE:-VibeSetup UI}"
 BRAND_FAVICON_URL="${BRAND_FAVICON_URL:-/favicon.svg}"
-PROJECT_NAME="${PROJECT_NAME:-gmoreva-setup}"
+# PROJECT_NAME — обязательный слаг проекта (без хардкода: форки сами задают).
+# Исходники → /opt/<PROJECT_NAME>, контейнеры/тома/сети с префиксом <PROJECT_NAME>.
+: "${PROJECT_NAME:?✗ PROJECT_NAME не задан в .env — укажите слаг проекта (напр. my-project)}"
 PROJECT_DIR="${PROJECT_DIR:-/opt/$PROJECT_NAME}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/opt/$PROJECT_NAME.tar.gz}"
 PROXY_DIR="${PROXY_DIR:-/opt/nginx-proxy}"
@@ -111,8 +113,8 @@ eq() {
 
 # --- 4. Сборка архива исходников + deploy-env.sh локально ---
 echo "→ Сборка архива исходников..."
-ARCHIVE_LOCAL="/tmp/vibesetup.tar.gz"
-DEPLOY_ENV_LOCAL="/tmp/vibesetup-deploy-env.sh"
+ARCHIVE_LOCAL="/tmp/${PROJECT_NAME}.tar.gz"
+DEPLOY_ENV_LOCAL="/tmp/${PROJECT_NAME}-deploy-env.sh"
 rm -f "$ARCHIVE_LOCAL" "$DEPLOY_ENV_LOCAL"
 tar --exclude=node_modules \
     --exclude=dist \
@@ -198,8 +200,8 @@ brand_title: "$BRAND_TITLE"
 brand_favicon_url: "$BRAND_FAVICON_URL"
 admin_login: "$ADMIN_LOGIN"
 admin_password: "$ADMIN_PASSWORD"
-db_username: "vibesetup"
-db_name: "vibesetup_db"
+db_username: "$PROJECT_NAME"
+db_name: "${PROJECT_NAME}_db"
 YML
 cat .app.secrets >> ansible/vars.yml
 chmod 600 ansible/vars.yml
@@ -218,4 +220,4 @@ echo "→ Проверка: https://$DOMAIN/api/users/count"
 echo "  (сертификат может выпускаться до ~1 мин после первого запуска)"
 HTTP_CODE="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 30 "https://$DOMAIN/api/users/count" 2>/dev/null || echo "000")"
 echo "  HTTP $HTTP_CODE  (ожидается 200)"
-echo "→ Логи на сервере: $SSH_BIN -p $SSH_PORT $SSH_USER@$SSH_HOST \"cd $PROJECT_DIR/docker && docker compose -p $PROJECT_NAME -f docker-compose.prod.yml logs -f app\""
+echo "→ Логи на сервере: $SSH_BIN -p $SSH_PORT $SSH_USER@$SSH_HOST \"cd $PROJECT_DIR/docker && docker compose -p $PROJECT_NAME -f docker-compose.prod.yml logs -f frontend backend\""

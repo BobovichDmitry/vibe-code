@@ -8,7 +8,7 @@ Nest.js API с глобальным префиксом `/api`. Модули: `Au
 
 | Файл | Роль |
 |------|------|
-| `apps/backend/src/main.ts` | Entry point: bootstrap, CORS, global prefix 'api', SPA fallback |
+| `apps/backend/src/main.ts` | Entry point: bootstrap, cookie-parser, CORS, global prefix 'api', порт 3001 (чистый API, статика не раздаётся) |
 | `apps/backend/src/env.ts` | Загрузчик env: `.env` → `.env.local` (override), внешнее окружение — наивысший приоритет |
 | `apps/backend/src/app.module.ts` | Root module: DatabaseModule, AuthModule, UsersModule, BrandingModule, FilesModule |
 | `apps/backend/src/auth/` | JWT auth module |

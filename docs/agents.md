@@ -11,7 +11,8 @@
 | `areas/backend-api-structure.md` | Backend API (auth, users, files) | CRUD пользователей, JWT auth, S3-файлы |
 | `areas/auth-structure.md` | Аутентификация | JWT, login/logout, guard |
 | `areas/database-structure.md` | База данных | TypeORM сущности (User, File), миграции |
-| `areas/frontend-structure.md` | Frontend (Vue SPA) | Страницы, роутинг, API-клиент |
+| `areas/frontend-structure.md` | Frontend (Nuxt 3 SSR) | Страницы, history-роутинг, useApi (SSR), cookie-auth |
+| `areas/nuxt-migration.md` | Гайд миграции на Nuxt | Перенос Vite SPA → Nuxt 3 SSR (референс) |
 | `areas/e2e-testing-structure.md` | E2E-тесты | Playwright, CDP, новые тесты |
 | `areas/admin-panel.md` | Админ-панель | AdminLayout, роуты, навигация |
 | `testing-guide.md` | Руководство по тестированию | Запуск тестов, написание |
@@ -32,7 +33,7 @@
 
 ```text
 # Проверка страницы в браузере:
-@browser-checker открой http://localhost:5173 и сделай скриншот публичной страницы
+@browser-checker открой http://localhost:3000 и сделай скриншот публичной страницы
 
 # Обновление документации после изменений:
 @docs-maintainer обнови docs, я добавил новый эндпоинт

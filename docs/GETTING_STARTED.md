@@ -187,15 +187,16 @@ project/
 │   │   │   └── app.module.ts   # Root module
 │   │   ├── .env              # Dev env
 │   │   └── .env.example      # Template
-│   └── frontend/         # Vue 3 SPA (Vite + Tailwind)
-│       ├── src/
-│       │   ├── api/            # Axios clients
-│       │   ├── views/          # PublicView, LoginView, Admin
-│       │   ├── router/         # Hash router
-│       │   └── composables/    # useAuth
-│       └── vite.config.ts
+│   └── frontend/         # Nuxt 3 SSR (Nitro + Tailwind, история-роутинг)
+│       ├── pages/            # file-based routing (index, login, admin/*)
+│       ├── layouts/          # default.vue + admin.vue
+│       ├── composables/     # useApi (SSR $fetch), useAuth (cookie JWT), useBranding, useTheme
+│       ├── middleware/       # auth, guest
+│       ├── plugins/          # theme.server / theme.client
+│       ├── public/           # статика (favicon.svg)
+│       └── nuxt.config.ts
 ├── e2e/                  # Playwright e2e tests (CDP)
-├── docker/               # Docker compose files
+├── docker/               # Dockerfile.frontend + Dockerfile.backend + compose
 ├── docs/                 # Документация
 ├── scripts/              # log-runner, kill-service
 ├── package.json          # Root workspace

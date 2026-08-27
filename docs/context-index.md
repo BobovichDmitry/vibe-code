@@ -9,7 +9,8 @@
 | `areas/backend-api-structure.md` | Backend API (auth, users, files) | CRUD пользователей, JWT auth, S3-файлы |
 | `areas/auth-structure.md` | Аутентификация | JWT, login/logout, guard |
 | `areas/database-structure.md` | База данных | TypeORM сущности (User, File), миграции |
-| `areas/frontend-structure.md` | Frontend (Vue SPA) | Роутинг, API-клиенты (auth/users/files), страницы |
+| `areas/frontend-structure.md` | Frontend (Nuxt 3 SSR) | Роутинг (history), useApi (SSR), cookie-auth, страницы |
+| `areas/nuxt-migration.md` | Гайд миграции на Nuxt | Перенос Vite SPA → Nuxt 3 SSR (референс для форков) |
 | `areas/e2e-testing-structure.md` | E2E-тесты | Playwright, headless/CDP, новые тесты |
 | `areas/admin-panel.md` | Админ-панель | AdminLayout, ManageUsers + ManageFiles, навигация |
 | `migrations.md` | Миграции БД | Режимы, npm-скрипты, baseline + AddFileEntity |

@@ -1,5 +1,5 @@
 # =============================================================================
-# Роль app: распаковка архива, генерация env, build/up приложения
+# Роль app: распаковка архива, генерация env, build/up приложения (frontend + backend)
 # =============================================================================
 
 - name: Создать project_dir
@@ -15,7 +15,7 @@
     remote_src: true
     creates: "{{ project_dir }}/package.json"
 
-- name: Рендерить docker/env из шаблона
+- name: Рендерить docker/env из шаблона (backend + compose-интерполяция)
   ansible.builtin.template:
     src: env.j2
     dest: "{{ project_dir }}/docker/env"
@@ -30,14 +30,15 @@
     remote_src: true
     mode: "0600"
 
-- name: Собрать приложение (docker compose build)
+# Build обоих сервисов (frontend = Nuxt, backend = Nest) из split Dockerfile'ов.
+- name: Собрать frontend+backend (docker compose build)
   ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} build
   args:
     chdir: "{{ project_dir }}/docker"
   register: app_build
   changed_when: "'SUCCESSFULLY' in app_build.stderr or 'naming to' in app_build.stderr"
 
-- name: Поднять приложение (docker compose up -d)
+- name: Поднять frontend+backend+postgres (docker compose up -d)
   ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} up -d
   args:
     chdir: "{{ project_dir }}/docker"

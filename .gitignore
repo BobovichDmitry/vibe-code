@@ -3,6 +3,8 @@ node_modules/
 
 # Build outputs
 apps/frontend/dist/
+apps/frontend/.output/
+apps/frontend/.nuxt/
 apps/backend/dist/
 *.tsbuildinfo
 

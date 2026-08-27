@@ -1,0 +1,50 @@
+# =============================================================================
+# Dockerfile.frontend — Nuxt 3 (SSR, Nitro-сервер) на порту 3000 (edge).
+# Multi-stage: deps → nuxt build → production-образ.
+# Backend (Nest) — отдельный сервис на 3001; Nuxt проксирует /api/** туда
+# (nitro routeRules, цель берётся из NUXT_API_BASE).
+# =============================================================================
+
+# ---------- Stage 1: deps (установка всех зависимостей workspaces) ----------
+FROM node:22-alpine AS deps
+WORKDIR /app
+
+# Копируем package-манифесты для кэширования слоя.
+COPY package.json package-lock.json ./
+COPY apps/frontend/package.json ./apps/frontend/
+COPY apps/backend/package.json ./apps/backend/
+COPY e2e/package.json ./e2e/
+
+RUN npm install --no-audit --no-fund
+
+# ---------- Stage 2: build Nuxt ----------
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+COPY apps/frontend/ ./apps/frontend/
+
+# Nuxt prepare генерирует .nuxt/ (типы, манифесты) — нужно до build.
+RUN cd apps/frontend && npx nuxi prepare && npx nuxi build
+
+# ---------- Stage 3: production ----------
+FROM node:22-alpine AS production
+WORKDIR /app
+
+ENV NODE_ENV=production
+# Nitro слушает 3000; хост — 0.0.0.0 (за nginx-proxy).
+ENV NITRO_HOST=0.0.0.0
+ENV NITRO_PORT=3000
+# Серверный base для SSR-фетча к backend (имя сервиса = 'backend', порт 3001).
+# Переопределяется через env, если frontend на отдельном сервере.
+ENV NUXT_API_BASE=http://backend:3001/api
+
+# Копируем только собранный Nuxt-вывод (.output) + package.json.
+COPY --from=builder /app/apps/frontend/.output ./.output
+COPY --from=builder /app/apps/frontend/package.json ./package.json
+
+EXPOSE 3000
+
+# Nitro-сервер (Node preset по умолчанию).
+CMD ["node", ".output/server/index.mjs"]

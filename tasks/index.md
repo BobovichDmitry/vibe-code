@@ -13,6 +13,7 @@
 
 ## Done
 <!-- выполненные задачи. Файл перенесён в done/, детали — внутри файла -->
+- [ssr_and_portable_deploy.md](done/ssr_and_portable_deploy.md) — миграция frontend на Nuxt 3 (SSR, history-роутинг, cookie-auth) + разделение на два сервиса (Nuxt:3000 edge, Nest:3001 API) + портируемый деплой (deploy.sh/ansible/Dockerfile без форк-специфичных хардкодов) + гайд миграции в docs (2026-08-27)
 - [s3_file_service.md](done/s3_file_service.md) — подключить S3 на v3 SDK: модуль `files/` (FileService upload/delete/stream/download/presigned get+put + FileEntity + контроллер /api/files), без ресайза (2025-01-27)
 - [01_transfer_task_mechanics.md](done/01_transfer_task_mechanics.md) — перенести механику очереди задач из agent-hosted: папка `tasks/` + 4 скилла + сабагенты code-solver/e2e-writer (оба стиля e2e) + доработка e2e-инфры (2025-01-24)
 - [02_strip_business_functionality.md](done/02_strip_business_functionality.md) — убрать бизнес-функционал (reminders + telegram-settings), оставить голый каркас: auth + users + public user-count + `create-admin` (2025-01-25)

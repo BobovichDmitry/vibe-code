@@ -1,115 +1,116 @@
-# Frontend Agent Guide
+# Frontend Agent Guide (Nuxt 3 SSR)
 
 ## Stack
 
-- **Vue 3** (Composition API, `<script setup lang="ts">`)
-- **Vite** (monorepo workspace `apps/frontend`)
+- **Nuxt 3** (Vue 3 + Nitro-сервер, SSR, history-роутинг)
 - **Tailwind CSS**
-- **Axios** (API client)
-- **Vue Router** (`createWebHashHistory`)
-- **Auto-reload:** `npm run dev:frontend:log` uses `vite`
+- **$fetch / useFetch / useAsyncData** (ofetch, SSR-aware) — вместо axios
+- **Cookie-auth** (httpOnly cookie `auth_token`) — вместо localStorage JWT
+- **Nitro routeRules** — прокси `/api/**` → backend (Nest, 3001)
+- monorepo workspace `apps/frontend`, порт **3000**
 
 ## Structure
 
 ```
-src/
-├── App.vue                    # Root: header + router-view
-├── api/
-│   ├── auth.ts                # Axios client + auth API functions
-│   └── users.ts               # Users API functions
-├── composables/
-│   ├── useAuth.ts             # Auth state (login/logout/checkAuth)
-│   └── useTheme.ts            # Dark/light theme toggle
-├── layouts/
-│   └── AdminLayout.vue        # Admin panel layout (sidebar + header)
-├── router/
-│   └── index.ts               # Hash router
-├── views/
-│   ├── PublicView.vue         # Public page (user count + text)
-│   ├── LoginView.vue          # Login form
+apps/frontend/
+├── nuxt.config.ts          # routeRules прокси /api, runtimeConfig, devServer 3000
+├── app.vue                  # Корень: глобальный брендинг (useHead) + NuxtLayout/NuxtPage
+├── assets/css/style.css     # Tailwind directives + компонентные классы
+├── pages/                   # file-based routing (history)
+│   ├── index.vue            # Публичная страница (SSR user count)
+│   ├── login.vue            # Форма входа (middleware: guest)
 │   └── admin/
-│       └── ManageUsersView.vue  # Users CRUD (admin only)
-└── style.css                  # Tailwind directives
+│       ├── index.vue        # Пользователи CRUD (layout: admin, middleware: auth)
+│       └── files.vue        # Файлы S3 (layout: admin, middleware: auth)
+├── layouts/
+│   ├── default.vue          # Глобальный хедер для не-admin страниц
+│   └── admin.vue            # Сайдбар-админка
+├── components/
+│   └── ThemeToggle.vue      # Переключатель темы
+├── composables/             # авто-импорт Nuxt
+│   ├── useApi.ts            # SSR-aware $fetch (client=/api, server=http://backend:3001/api)
+│   ├── useAuth.ts           # Cookie-auth (useCookie), login/logout/fetchUser
+│   ├── useBranding.ts       # useAsyncData + useHead (SSR title/favicon)
+│   └── useTheme.ts          # Тема (cookie, без FOUC)
+├── middleware/              # авто-импорт как 'auth', 'guest'
+│   ├── auth.ts              # Защита /admin: редирект /login если нет cookie
+│   └── guest.ts             # /login: редирект /admin если авторизован
+├── plugins/
+│   ├── theme.server.ts      # <html class="dark"> по cookie (SSR)
+│   └── theme.client.ts      # matchMedia + localStorage-зеркало (client)
+└── tsconfig.json            # extends .nuxt/tsconfig.json
 ```
 
-## Routes
+## Routes (file-based, history)
 
-| Path | Component | Auth Required | Description |
-|------|-----------|---------------|-------------|
-| `/` | `PublicView.vue` | No | Public page — user count + info text |
-| `/login` | `LoginView.vue` | No (guest only) | Login form |
-| `/admin/users` | `ManageUsersView.vue` | Yes | Users CRUD (admin only) |
+| Path | Page | Layout | Auth |
+|------|------|--------|------|
+| `/` | `pages/index.vue` | `default` | No |
+| `/login` | `pages/login.vue` | `default` | guest |
+| `/admin` | `pages/admin/index.vue` | `admin` | Yes (`middleware/auth`) |
+| `/admin/files` | `pages/admin/files.vue` | `admin` | Yes (`middleware/auth`) |
 
-Router guard: `beforeEnter: requireAuth` redirects to `/login` if no `auth_token` in localStorage.
+Хеш-роутинга нет: переходы — real history. Guard — `middleware/auth.ts`.
 
-## Components
+## API Client (useApi)
 
-### App.vue (Root)
-- Sticky header with app title + login/admin buttons
-- Theme toggle (light/dark/system)
-- `<router-view />` for page rendering
+`composables/useApi.ts` — обёртка над `$fetch`:
+- **Клиент**: `baseURL = runtimeConfig.public.apiBase` (`/api`) → Nitro прокси → backend.
+- **Сервер (SSR)**: `baseURL = runtimeConfig.apiBase` (`http://backend:3001/api`) —
+  прямой server-to-server fetch, мимо CORS.
+- При SSR проксирует `useRequestHeaders(['cookie'])` на backend.
+- Пути БЕЗ `/api` (baseURL содержит): `request('/users/count')`.
 
-### PublicView.vue
-- Shows user count from `GET /api/users/count`
-- Static info text (template + hero text configurable from settings)
-- Loading and error states
+## Auth Flow (cookie, httpOnly + visible-флаг)
 
-### LoginView.vue
-- Two-column layout (branding + form)
-- Uses `useAuth().login()` composable
-- Redirects to `/admin/users` on success
+Два cookie (ставит backend на `/api/auth/login`):
+- `auth_token` — httpOnly JWT (защищён от XSS; браузер отправляет автоматически).
+- `auth_logged_in` — visible-флаг `1` (без секрета; для UI «залогинен?» без запроса).
 
-### AdminLayout.vue
-- Sidebar navigation + page header
-- Children: ManageUsersView
+1. `useAuth().login()` → `POST /api/auth/login` → backend ставит оба cookie
+   (и возвращает `{ access_token }` для обратной совместимости).
+2. `useCookie('auth_logged_in')` — readable на клиенте (флаг);
+   `useCookie('auth_token')` — только на сервере (httpOnly).
+3. `middleware/auth.ts` проверяет флаг/токен + `user` state; при отсутствии user
+   валидирует через `fetchUser()` (cookie отправляется автоматически).
+4. `logout()` → `POST /api/auth/logout` (clearCookie оба).
+5. Bearer-auth обратно совместим (старые клиенты/e2e).
 
-### ManageUsersView.vue
-- Users table (login, role, created, actions)
-- Create user modal (form: login, password, role)
-- Delete user (confirm dialog)
-- Role: admin / user
+## Брендинг / Тема (SSR-safe)
 
-## API Clients
+- `useBranding` — `useAsyncData('branding')` + `useHead({ title, link })` (HTML с сервера).
+- `useTheme` + `plugins/theme.{server,client}.ts` — cookie `theme_preference`,
+  `<html class="dark">` в SSR-ответе (без FOUC).
 
-### `api/auth.ts`
-- **Axios instance** — base URL from `VITE_API_BASE_URL` (default `/`), auto-attaches JWT token
-- **Functions:**
-  - `login(data)` → `{ access_token }`
-  - `getMe()` → current user info
+## Runtime Config (env)
 
-### `api/users.ts`
-- **Functions:**
-  - `getUsers()` → all users
-  - `getUserCount()` → count (public)
-  - `createUser(data)` → create user
-  - `updateUser(id, data)` → update user
-  - `deleteUser(id)` → delete user
-
-## Critical Gotchas
-
-1. **Date formatting:** Never use `date.toISOString().split('T')[0]` for local dates — it converts to UTC and shifts the date back by timezone offset.
-
-2. **HTTP caching:** The Vite dev proxy caches GET responses with ETags. Always include `Cache-Control: no-cache` in axios headers (already configured in the default instance).
-
-3. **Hash router:** URLs look like `/#/`. No SPA fallback needed in dev (Vite handles it).
-
-4. **Auth token:** Stored in `localStorage` as `auth_token`. Checked by `requireAuth` guard before admin routes.
-
-## Env Vars
-
-| Var | Default | Description |
-|-----|---------|-------------|
-| `VITE_API_BASE_URL` | `/` | API base URL (proxy in dev, same-origin in prod) |
+| Var | Контекст | Default | Описание |
+|-----|----------|---------|----------|
+| `NUXT_PUBLIC_API_BASE` | client | `/api` | Клиентский base (через Nitro прокси) |
+| `NUXT_API_BASE` | server (SSR) | `http://backend:3001/api` | Серверный base (прямой fetch) |
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev:frontend:log` | Start Vite dev server (user runs this) |
+| `npm run dev:frontend:log` | Start `nuxt dev` (порт 3000, с логированием) |
 | `npm run kill:frontend` | Kill frontend process tree |
-| `npm run build:frontend` | Build to `dist/` (runs `vue-tsc -b && vite build`) |
+| `npm run build:frontend` | `nuxt build` → `.output/` (Nitro server) |
+| `npm run typecheck:frontend` | `nuxt typecheck` (vue-tsc --noEmit) |
+
+## Critical Gotchas (SSR)
+
+1. **`document is not defined` / `localStorage is not defined`** — любой доступ к
+   `document`/`window`/`localStorage` только в `import.meta.client` /
+   `typeof window !== 'undefined'`.
+2. **FOUC темы** — cookie + server-plugin ставят `<html class>` в SSR.
+3. **Hydration mismatch** — детерминированные данные на SSR (без `Date.now()`/
+   случайных значений в рендере).
+4. **Cookie при SSR fetch** — `useApi` проксирует `useRequestHeaders(['cookie'])`.
+5. **CORS** — только для клиентского fetch; SSR-фетч идёт мимо CORS.
+6. **Хеш-роутинга нет** — URL без `#` (`/admin`, `/login`).
 
 ## Logs
 
-- `logs/frontend.log` — current log (rotates at 10MB)
-- `logs/frontend.pid` — PID file (exists = running)
+- `logs/frontend.log` — текущий лог (ротация 10MB)
+- `logs/frontend.pid` — PID (есть = запущен)

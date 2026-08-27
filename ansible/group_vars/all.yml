@@ -1,8 +1,9 @@
 # =============================================================================
-# Переменные для ansible-деплоя VibeSetup UI
-# Заполняются перед запуском плейбука. Секреты — плейсхолдеры.
-# Для реальных значений используйте отдельный vars.yml (см. vars.example.yml)
-# и зашифруйте его через ansible-vault.
+# Переменные для ansible-деплоя (плейсхолдеры — реальные значения в vars.yml).
+#
+# Портируемость по форкам: НЕТ хардкода слага проекта/имени БД.
+# project_name, db_username, db_name выводятся из project_name (задаётся в .env /
+# vars.yml). project_dir = /opt/<project_name>.
 # =============================================================================
 
 # --- Сервер ---
@@ -10,21 +11,22 @@
 server_ip: "127.0.0.1"
 # Домен приложения (должен указывать DNS-записью на server_ip)
 domain: "app.example.com"
-# Слаг проекта: исходники в /opt/<project_name>, контейнеры/тома с префиксом <project_name>
-project_name: "gmoreva-setup"
+# Слаг проекта: исходники в /opt/<project_name>, контейнеры/тома/сети с префиксом <project_name>
+# ЗАПОЛНИТЬ в vars.yml (плейсхолдер — не дефолт для форка).
+project_name: "my-project"
 
-# --- Пути ---
+# --- Пути (выводятся из project_name, можно переопределить в vars.yml) ---
 # Куда распаковывается архив исходников
-project_dir: "/opt/vibesetup"
+project_dir: "/opt/{{ project_name }}"
 # Путь к загруженному через sftp архиву tar.gz на сервере
-archive_path: "/opt/vibesetup.tar.gz"
+archive_path: "/opt/{{ project_name }}.tar.gz"
 # Где живёт общий compose для nginx-proxy (один раз на сервере)
 proxy_dir: "/opt/nginx-proxy"
 
-# --- PostgreSQL ---
-db_username: "vibesetup"
+# --- PostgreSQL (выводятся из project_name) ---
+db_username: "{{ project_name }}"
 db_password: "CHANGE_ME_strong_password"
-db_name: "vibesetup_db"
+db_name: "{{ project_name }}_db"
 
 # --- JWT ---
 # Сгенерировать: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -34,7 +36,7 @@ jwt_secret: "CHANGE_ME_jwt_secret"
 admin_login: "admin"
 admin_password: "CHANGE_ME_admin_password"
 
-# --- Брендинг (из задачи 04) ---
+# --- Брендинг ---
 brand_title: "VibeSetup UI"
 brand_favicon_url: "/favicon.svg"
 
@@ -42,6 +44,7 @@ brand_favicon_url: "/favicon.svg"
 letsencrypt_email: "admin@example.com"
 
 # --- Производные (не менять вручную) ---
+# CORS = домен за nginx-proxy (клиентский fetch браузера).
 cors_origin: "https://{{ domain }}"
 
 # --- Docker compose файлы ---

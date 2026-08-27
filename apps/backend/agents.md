@@ -75,11 +75,12 @@ All use `class-validator` decorators. Validation is enforced globally.
 | `DB_USERNAME` | `postgres` | PostgreSQL user |
 | `DB_PASSWORD` | `postgres` | PostgreSQL password |
 | `DB_DATABASE` | `app_db` | PostgreSQL database |
-| `PORT` | `3000` | Server port |
+| `PORT` | `3001` | Server port (внутренний API) |
 | `JWT_SECRET` | `dev-secret-change-me` | JWT secret (change in prod!) |
 | `ADMIN_LOGIN` | `admin` | First admin (empty DB only) |
 | `ADMIN_PASSWORD` | `admin` | First admin (empty DB only) |
-| `CORS_ORIGIN` | `http://localhost:5173,...` | CORS origins |
+| `CORS_ORIGIN` | `http://localhost:3000` | CORS origins (Nuxt-origin) |
+| `COOKIE_SECURE` | (empty) | Cookie-auth secure (true в проде HTTPS) |
 
 ## Commands
 
