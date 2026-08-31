@@ -1,5 +1,11 @@
 # =============================================================================
-# Production docker-compose (используется ansible-плейбуком при деплое).
+# Production docker-compose (ansible-деплой + CI-деплой из Registry).
+#
+# Два режима:\n#   1) ansible (deploy.sh): FRONTEND_IMAGE/BACKEND_IMAGE не заданы →
+#      docker compose build собирает образы и тегирует их значениями image:
+#      (по умолчанию «<имя>:local»), затем up -d.
+#   2) GitLab CI: образы уже собраны и запушены в Registry; CI передаёт
+#      FRONTEND_IMAGE/BACKEND_IMAGE (тег по SHA) и делает pull + up -d.
 #
 # Три сервиса:
 #   frontend (Nuxt SSR, 3000) — edge, за nginx-proxy (VIRTUAL_HOST + Let's Encrypt);
@@ -9,13 +15,13 @@
 #
 # frontend зависит от backend; Nuxt проксирует /api/** → http://backend:3001
 # (nitro routeRules, цель из NUXT_API_BASE).
-#
-# env_file ./env рендерится ansible из templates/env.j2 (backend-переменные).
-# frontend-переменные (NUXT_*) — ниже в environment (не секреты).
 # =============================================================================
 
 services:
   frontend:
+    # CI: frontend-образ из Registry (см. .gitlab-ci.yml);
+    # ansible/build без переменных — локальный тег из compose build.
+    image: ${FRONTEND_IMAGE:-app-frontend:local}
     build:
       context: ../
       dockerfile: docker/Dockerfile.frontend
@@ -39,6 +45,7 @@ services:
     restart: unless-stopped
 
   backend:
+    image: ${BACKEND_IMAGE:-app-backend:local}
     build:
       context: ../
       dockerfile: docker/Dockerfile.backend
