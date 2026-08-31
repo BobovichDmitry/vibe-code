@@ -36,9 +36,9 @@ npm run dev:frontend:log
 # google-chrome --remote-debugging-port=9222   (Linux)
 ```
 
-Приложение доступно:
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:3000/api`
+Приложение доступно (дефолтные порты меняются через `PORT` в `apps/<service>/.env.local`, см. раздел «Переменные окружения»):
+- Frontend: `http://localhost:3000`
+- Backend API: `http://localhost:3001/api`
 
 ### 4. Создание первого админа
 
@@ -235,11 +235,11 @@ project/
 | `DB_USERNAME` | `postgres` | PostgreSQL user |
 | `DB_PASSWORD` | `postgres` | PostgreSQL password |
 | `DB_DATABASE` | `app_db` | PostgreSQL database |
-| `PORT` | `3000` | Server port |
+| `PORT` | `3001` | Backend API port (переопределяется в `.env.local`) |
 | `JWT_SECRET` | `dev-secret-change-me` | **Изменить в production!** |
 | `ADMIN_LOGIN` | `admin` | Первый админ (только пустая БД) |
 | `ADMIN_PASSWORD` | `admin` | Первый админ (только пустая БД) |
-| `CORS_ORIGIN` | `http://localhost:5173,...` | CORS allowed origins |
+| `CORS_ORIGIN` | `http://localhost:3000` | CORS allowed origins (Nuxt-origin) |
 | `S3_ENDPOINT` | (empty) | S3-совместимое хранилище endpoint (MinIO/S3) |
 | `S3_PUBLIC_URL` | = `S3_ENDPOINT` | Endpoint для presigned-URL (публичный домен) |
 | `S3_REGION` | `us-east-1` | Регион S3 |
@@ -251,9 +251,19 @@ project/
 | `S3_DOWNLOAD_EXPIRES` | `86400` | Срок действия presigned GET, сек |
 | `S3_FORCE_PATH_STYLE` | `true` | `forcePathStyle` (true для MinIO/самохоста) |
 
+### Frontend (`apps/frontend/.env` + `.env.local`)
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `PORT` | `3000` | Порт dev-сервера (`nuxt dev`; в проде порт задаёт `NITRO_PORT`) |
+| `NUXT_PUBLIC_API_BASE` | `/api` | Клиентский base (через Nitro прокси) |
+| `NUXT_API_BASE` | `http://localhost:3001/api` | Серверный base при SSR (прямой fetch к backend) |
+
+`.env.local` frontend грузится в `nuxt.config.ts` через dotenv (`override: true`) — Nuxt CLI сам подгружает только `.env`. Шаблон: `apps/frontend/.env.local.example`. После смены портов перезапустите сервис (`npm run kill:*` → `npm run dev:*:log`).
+
 ### .env.local
 
-`.env.local` (не под git) переопределяет `.env` — сюда кладут локальные креды S3/MinIO. Шаблон: `apps/backend/.env.local.example`. Создаётся рядом с `.env`, игнорируется git (`.env.local`, `.env.*.local`). Внешнее окружение (прод-контейнер) имеет наивысший приоритет. Полный список `S3_*` — в корневом `AGENTS.md`.
+`.env.local` (не под git) переопределяет `.env` — порты (`PORT` у **обоих сервисов**) и локальные креды S3/MinIO. Шаблоны: `apps/backend/.env.local.example` (PORT, S3_*) и `apps/frontend/.env.local.example` (PORT, NUXT_*). Создаётся рядом с `.env`, игнорируется git (`.env.local`, `.env.*.local`). При смене порта backend обновите `NUXT_API_BASE` у frontend (и наоборот — `CORS_ORIGIN` у backend). Внешнее окружение (прод-контейнер) имеет наивысший приоритет. Полный список `S3_*` — в корневом `AGENTS.md`.
 
 ### E2E
 
@@ -261,5 +271,7 @@ project/
 |----------|---------|----------|
 | `BROWSER_PORT` | `9222` | Chrome CDP port |
 | `REMOTE_CHROME_HOST` | `localhost` | Chrome host |
-| `E2E_BASE_URL` | `http://localhost:5173` | App URL |
-| `E2E_API_URL` | `http://localhost:3000/api` | API URL |
+| `E2E_BASE_URL` | `http://localhost:3000` | App URL (Nuxt SSR edge) |
+| `E2E_API_URL` | `http://localhost:3001/api` | API URL |
+
+Если подняли сервисы на нестандартных портах (`PORT` в `apps/<service>/.env.local`) — обновите `E2E_BASE_URL` / `E2E_API_URL` в `e2e/.env`.

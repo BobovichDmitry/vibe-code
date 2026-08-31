@@ -10,13 +10,14 @@ Nuxt 3 (Vue 3 + Nitro-сервер, SSR, history-роутинг). Публичн
 
 Frontend — отдельный сервис на порту **3000** (edge, за nginx-proxy). Backend
 (Nest) — на **3001** (внутренний API); Nuxt проксирует `/api/**` → backend
-через `routeRules`.
+через `routeRules`. Порты — дефолты; в dev переопределяются через `PORT` в
+`.env.local` соответствующего сервиса (см. «Порты и env-файлы», без правок кода).
 
 ## Структура
 
 ```
 apps/frontend/
-├── nuxt.config.ts        # Конфиг: routeRules прокси /api, runtimeConfig, devServer 3000
+├── nuxt.config.ts        # Конфиг: routeRules прокси /api, runtimeConfig, devServer.port из PORT (dotenv → .env.local)
 ├── app.vue                # Корень: глобальный брендинг (useHead) + NuxtLayout/NuxtPage
 ├── public/
 │   └── favicon.svg        # Favicon (Nuxt отдаёт public/ автоматически; дефолт useBranding)
@@ -151,11 +152,24 @@ watch(pending, (p) => { loading.value = p; }, { immediate: true });
 Чтобы вынести frontend на отдельный сервер — сменить `NUXT_API_BASE` на публичный
 URL backend (без правок кода).
 
+## Порты и env-файлы (.env.local)
+
+- `nuxt.config.ts` сам грузит `apps/frontend/.env.local` через dotenv (`override: true`) —
+  Nuxt CLI (c12) подгружает только `.env`. Схема — та же, что у backend (`apps/backend/src/env.ts`).
+- `devServer.port` берётся из `PORT` (fallback 3000) — **только для `nuxt dev`**;
+  в проде порт задаёт `NITRO_PORT` (Docker/Nitro).
+- Без правок кода настраиваются в `apps/frontend/.env` (под git) или `.env.local`
+  (не под git, шаблон `apps/frontend/.env.local.example`): `PORT`,
+  `NUXT_API_BASE`, `NUXT_PUBLIC_API_BASE`.
+- При смене порта backend (`PORT` в `apps/backend/.env.local`) обновите
+  `NUXT_API_BASE` у frontend (и `CORS_ORIGIN` у backend). После изменений
+  перезапустите dev-сервер (`npm run kill:frontend` → `npm run dev:frontend:log`).
+
 ## Команды
 
 | Команда | Описание |
 |---|---|
-| `npm run dev:frontend` | `nuxt dev` (порт 3000) |
+| `npm run dev:frontend` | `nuxt dev` (порт из `PORT`, fallback 3000) |
 | `npm run build:frontend` | `nuxt build` → `.output/` (Nitro server) |
 | `npm run typecheck:frontend` | `nuxt typecheck` (vue-tsc --noEmit) |
 

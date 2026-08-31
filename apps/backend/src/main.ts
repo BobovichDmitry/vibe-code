@@ -8,8 +8,9 @@ import { AppModule } from './app.module';
 /**
  * Точка входа Nest.js (API на /api).
  *
- * Backend — отдельный сервис на порту 3001 (внутренний API).
- * Frontend (Nuxt SSR) работает на порту 3000 (edge, за nginx-proxy) и
+ * Backend — отдельный сервис на порту 3001 (по умолчанию; переопределяется
+ * PORT из .env / .env.local, см. env.ts). Frontend (Nuxt SSR) работает на
+ * порту 3000 (edge, за nginx-proxy по умолчанию) и
  * проксирует /api/** на этот backend через nitro routeRules.
  *
  * Cookie-auth: httpOnly cookie `auth_token` ставится на /api/auth/login
@@ -44,7 +45,7 @@ async function bootstrap() {
     }),
   );
 
-  // Порт 3001 — внутренний API. Nuxt (3000) проксирует /api → сюда.
+  // Порт — PORT из .env / .env.local. Nuxt (по умолчанию 3000) проксирует /api → сюда.
   const port = process.env.PORT || 3001;
   await app.listen(port);
   console.log(`Backend (API) running on http://localhost:${port}`);

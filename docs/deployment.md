@@ -101,6 +101,11 @@ docker compose -f docker-compose.e2e.yml up e2e
 Чтобы вынести frontend на отдельный сервер — сменить `NUXT_API_BASE` на публичный
 URL backend (без правок кода).
 
+В dev (без Docker) порт frontend (`PORT`, влияет только на `nuxt dev`) и
+`NUXT_API_BASE` задаются в `apps/frontend/.env` / `.env.local` (грузится в
+`nuxt.config.ts` через dotenv). `NITRO_HOST`/`NITRO_PORT` выше — только прод
+(Nitro в контейнере).
+
 ### Backend dev (`apps/backend/.env`)
 
 | Variable | Default | Описание |
@@ -113,12 +118,19 @@ URL backend (без правок кода).
 | `ADMIN_LOGIN` | `admin` | First admin (empty DB only) |
 | `COOKIE_SECURE` | (empty) | Cookie secure (auto в проде) |
 
-### .env.local
+> **Смена порта в dev**: задайте `PORT` в `apps/backend/.env.local` (шаблон
+> `.env.local.example` содержит секцию про PORT) — без правок кода. При смене
+> порта backend обновите также `NUXT_API_BASE` у frontend (и `CORS_ORIGIN`).
 
-`.env.local` (не под git) переопределяет `.env` (`override: true`) — сюда кладут
-локальные креды S3/MinIO. Шаблон: `apps/backend/.env.local.example`. Внешнее
-окружение (прод-контейнер) имеет наивысший приоритет. Загрузчик:
-`apps/backend/src/env.ts`. Полный список `S3_*` — в корневом `AGENTS.md`.
+### .env.local (dev, оба сервиса)
+
+`.env.local` (не под git) переопределяет `.env` — порты и локальные креды S3/MinIO.
+Есть у **обоих сервисов**: `apps/backend/.env.local.example` (PORT, S3_*;
+загрузчик `apps/backend/src/env.ts`, `override: true`) и `apps/frontend/.env.local.example`
+(PORT, NUXT_*; грузится в `nuxt.config.ts` через dotenv). Внешнее окружение
+(прод-контейнер) имеет наивысший приоритет. При смене порта backend обновите
+`NUXT_API_BASE` у frontend (и `CORS_ORIGIN` у backend). Полный список `S3_*` —
+в корневом `AGENTS.md`.
 
 ## Порты
 
@@ -131,6 +143,8 @@ URL backend (без правок кода).
 | 5432 | PostgreSQL | Внутренний (Docker) / `localhost:5432` (dev) |
 | 9222 | Chrome CDP | Только e2e |
 | 8080 | Playwright UI | Только e2e Docker |
+
+В dev порты 3000/3001 переопределяются через `PORT` в `apps/<service>/.env.local` (у frontend — только для `nuxt dev`; в проде порт задаёт `NITRO_PORT`, backend в docker — `PORT` из compose-env).
 
 ## Деплой через deploy.sh / ansible
 

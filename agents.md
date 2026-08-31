@@ -39,7 +39,7 @@ vibe-setup-ui/
 │       ├── middleware/                # auth.ts, guest.ts
 │       ├── plugins/                   # theme.server.ts (без FOUC), theme.client.ts
 │       ├── assets/css/style.css       # Tailwind directives
-│       └── .env                        # NUXT_PUBLIC_API_BASE, NUXT_API_BASE
+│       └── .env, .env.local.example    # PORT, NUXT_PUBLIC_API_BASE, NUXT_API_BASE
 ├── e2e/                    # Playwright e2e tests (remote Chrome CDP)
 │   ├── fixtures.ts          # test.extend: connectedBrowser, connectedPage
 │   ├── global-setup.ts      # Checks Chrome CDP, seeds DB via API
@@ -143,7 +143,7 @@ When debugging a problem, read the logs instead:
 | `DB_USERNAME` | `postgres` | PostgreSQL user |
 | `DB_PASSWORD` | `postgres` | PostgreSQL password |
 | `DB_DATABASE` | `app_db` | PostgreSQL database name |
-| `PORT` | `3001` | Backend (внутренний API) port |
+| `PORT` | `3001` | Backend (внутренний API) port (переопределяется в `.env.local`) |
 | `JWT_SECRET` | `dev-secret-change-me` | **Change in production!** |
 | `ADMIN_LOGIN` | `admin` | First admin (empty DB only) |
 | `ADMIN_PASSWORD` | `admin` | First admin (empty DB only) |
@@ -161,8 +161,14 @@ When debugging a problem, read the logs instead:
 | `S3_FORCE_PATH_STYLE` | `true` | `forcePathStyle` для S3Client (true для MinIO/самохоста) |
 
 ### Frontend (`apps/frontend/.env`)
+
+Порты обоих сервисов задаются через `PORT` в `apps/<service>/.env.local`
+(переопределяет `.env`; шаблон — `.env.local.example` в папке сервиса). При смене
+порта backend обновите и `NUXT_API_BASE` у frontend (и наоборот — `CORS_ORIGIN` у backend).
+
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `PORT` | `3000` | Порт dev-сервера frontend (nuxt dev; только для dev — в проде используется `NITRO_PORT`) |
 | `NUXT_PUBLIC_API_BASE` | `/api` | Клиентский base (через Nitro прокси) |
 | `NUXT_API_BASE` | `http://localhost:3001/api` | Серверный base при SSR (прямой fetch к backend) |
 
