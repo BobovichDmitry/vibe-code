@@ -20,6 +20,9 @@ apps/backend/dist/
 *.swp
 *.swo
 
+# Local agent configs (Pi/MCP)
+/.ai/
+
 # OS
 .DS_Store
 Thumbs.db
