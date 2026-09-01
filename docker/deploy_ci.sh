@@ -68,7 +68,7 @@ fi
 
 # CI_REGISTRY/CI_JOB_TOKEN — опциональны (нужны только для логина в Registry;
 # в CI задаются автоматически, при ручном тесте — скипаем, если авторизация
-# в registry уже сделана на сервере руками).
+# в registry уже сделана на сервере руками; или задай REGISTRY_USER+CI_JOB_TOKEN).
 REGISTRY_LOGGED_IN=0
 for v in "$FRONTEND_IMAGE" "$BACKEND_IMAGE"; do
   case "$v" in *[\"\'\ ]*|*$'\n'*) echo "✗ Недопустимые символы в: $v" >&2; exit 1;; esac
@@ -181,19 +181,21 @@ export SSH_HOST=$(eq "$SSH_HOST")
 EOF
 
 echo "→ Загрузка архива + env на сервер..."
-sftp -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i "$BUNDLE_DIR/id_rsa" -P "$SSH_PORT" -b - "${SSH_USER}@${SSH_HOST}" <<SFTP_EOF
-put "$ARCHIVE_LOCAL" "$ARCHIVE_PATH"
-put "$DEPLOY_ENV_LOCAL" "/opt/.${PROJECT_NAME}-deploy-env.sh"
-SFTP_EOF
+# Загрузка через ssh stdin (binary-safe) — не через sftp: sftp ломается на Windows
+# (Git Bash: exec /usr/bin/ssh not found), а на CI-раннере sftp не нужен.
+"${SSH_CMD[@]}" "cat > '$ARCHIVE_PATH'" < "$ARCHIVE_LOCAL"
+"${SSH_CMD[@]}" "cat > '/opt/.${PROJECT_NAME}-deploy-env.sh'" < "$DEPLOY_ENV_LOCAL"
 
 # --- 6. Логин в Registry ВРЕМЕННЫМ токеном (token идёт через stdin, не в argv) ---
-# Только в CI (CI_REGISTRY+CI_JOB_TOKEN заданы). Ручной тест-запуск без них:
-# авторизация в registry на сервере делается руками заранее.
+# Только если заданы CI_REGISTRY и CI_JOB_TOKEN (в CI — всегда). Ручной тест-запуск
+# без них: авторизация в registry на сервере делается руками, ЛИБО передай
+# REGISTRY_USER=<логин> и CI_JOB_TOKEN=<PAT/deploy-token> — тогда логин выполнит скрипт.
+REGISTRY_USER="${REGISTRY_USER:-gitlab-ci-token}"
 if [ -n "${CI_REGISTRY:-}" ] && [ -n "${CI_JOB_TOKEN:-}" ]; then
-  echo "→ docker login в $CI_REGISTRY (временный CI_JOB_TOKEN)..."
+  echo "→ docker login в $CI_REGISTRY (как $REGISTRY_USER, токен через stdin)..."
   printf '%s' "$CI_JOB_TOKEN" | \
     ssh -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i "$BUNDLE_DIR/id_rsa" -p "$SSH_PORT" \
-        "${SSH_USER}@${SSH_HOST}" "docker login '$CI_REGISTRY' --username gitlab-ci-token --password-stdin"
+        "${SSH_USER}@${SSH_HOST}" "docker login '$CI_REGISTRY' --username '$REGISTRY_USER' --password-stdin"
   REGISTRY_LOGGED_IN=1
 else
   echo "→ CI_REGISTRY/CI_JOB_TOKEN не заданы — docker login пропущен (считаю, что авторизация в registry на сервере уже есть)."
