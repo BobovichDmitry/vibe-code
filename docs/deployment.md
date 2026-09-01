@@ -252,6 +252,11 @@ BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
   заработал — заведите `DEPLOY_BUNDLE_*` в Settings → CI/CD → Variables (protected+masked).
 - Ветка `master` — **protected**: иначе protected-переменные недоступны и джоба
   пропустит деплой (а не упадёт) — бандл просто не будет виден на непротектед ветке.
+- **Host key сервера**: по умолчанию `StrictHostKeyChecking=accept-new` — если сервер
+  пересоздан и в known_hosts раннера остался старый ключ, деплой упадёт с
+  `REMOTE HOST IDENTIFICATION HAS CHANGED`. Отключить проверку — переменная
+  `DEPLOY_SKIP_HOST_KEY_CHECK=1` (Settings → CI/CD → Variables; НЕБЕЗОПАСНО — MITM-риск);
+  безопасная альтернатива — `ssh-keygen -R <host>` на раннере.
 - `CI_JOB_TOKEN` открывает только Registry **своего** проекта; для образов из
   чужого проекта нужен deploy token.
 - Чек-лист: оба образа в Registry (тег SHA) → бандлы заведены (protected+masked,

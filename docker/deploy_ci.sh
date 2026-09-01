@@ -74,6 +74,17 @@ for v in "$FRONTEND_IMAGE" "$BACKEND_IMAGE"; do
   case "$v" in *[\"\'\ ]*|*$'\n'*) echo "✗ Недопустимые символы в: $v" >&2; exit 1;; esac
 done
 
+# --- 1а. Зависимости раннера: ssh/curl (в CI-образе ubuntu их нет; на shell-раннере
+# уже есть — apt без root там невозможен, поэтому ставим только если реально нужно) ---
+if ! command -v ssh >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
+  if [ "$(id -u)" = "0" ]; then
+    apt-get update -qq && apt-get install -y -qq openssh-client ca-certificates curl
+  else
+    echo "✗ ssh/curl не найдены, а apt требует root — установи openssh-client на раннере (или используй docker executor)." >&2
+    exit 1
+  fi
+fi
+
 # --- 2. Распаковка бандла (SSH-ключ + .env) ---
 BUNDLE_DIR="$(mktemp -d /tmp/deploy-ci.XXXXXX)"
 chmod 700 "$BUNDLE_DIR"
@@ -117,8 +128,20 @@ except Exception: print('')" "$DOMAIN" 2>/dev/null || true)"
 fi
 
 SSH_BIN="${SSH_BIN:-ssh}"
+
+# --- Проверка host-ключа сервера ---
+# По умолчанию: accept-new (новые хосты доверяем, ИЗМЕНИВШИЕСЯ ключи — ошибка).
+# DEPLOY_SKIP_HOST_KEY_CHECK=1 (GitLab Variable или env) — отключает проверку
+# полностью (для пересозданных/переустановленных серверов; НЕБЕЗОПАСНО — MITM).
+if [ "${DEPLOY_SKIP_HOST_KEY_CHECK:-0}" = "1" ]; then
+  echo "⚠  DEPLOY_SKIP_HOST_KEY_CHECK=1 — проверка host key сервера ОТКЛЮЧЕНА (небезопасно)."
+  HOST_KEY_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+else
+  HOST_KEY_OPTS=(-o StrictHostKeyChecking=accept-new)
+fi
+
 SSH_BASE=(-i "$BUNDLE_DIR/id_rsa"
-          -o StrictHostKeyChecking=accept-new
+          "${HOST_KEY_OPTS[@]}"
           -o IdentitiesOnly=yes
           -o ConnectTimeout=15
           -p "$SSH_PORT")
@@ -194,7 +217,7 @@ REGISTRY_USER="${REGISTRY_USER:-gitlab-ci-token}"
 if [ -n "${CI_REGISTRY:-}" ] && [ -n "${CI_JOB_TOKEN:-}" ]; then
   echo "→ docker login в $CI_REGISTRY (как $REGISTRY_USER, токен через stdin)..."
   printf '%s' "$CI_JOB_TOKEN" | \
-    ssh -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i "$BUNDLE_DIR/id_rsa" -p "$SSH_PORT" \
+    "$SSH_BIN" "${HOST_KEY_OPTS[@]}" -o IdentitiesOnly=yes -i "$BUNDLE_DIR/id_rsa" -p "$SSH_PORT" \
         "${SSH_USER}@${SSH_HOST}" "docker login '$CI_REGISTRY' --username '$REGISTRY_USER' --password-stdin"
   REGISTRY_LOGGED_IN=1
 else
@@ -259,7 +282,7 @@ REMOTE_DEPLOY
 
 # --- 8. Логаут из Registry (токен временный) — best-effort ---
 if [ "$REGISTRY_LOGGED_IN" = "1" ]; then
-  ssh -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes -i "$BUNDLE_DIR/id_rsa" -p "$SSH_PORT" \
+  "$SSH_BIN" "${HOST_KEY_OPTS[@]}" -o IdentitiesOnly=yes -i "$BUNDLE_DIR/id_rsa" -p "$SSH_PORT" \
       "${SSH_USER}@${SSH_HOST}" "docker logout '$CI_REGISTRY'" >/dev/null 2>&1 || true
 fi
 

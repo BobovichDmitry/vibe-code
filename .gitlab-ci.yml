@@ -31,6 +31,11 @@
 # Ветка master (default) → build → авто-деплой в test И production.
 # Если бандл-переменная окружения не задана — деплой-джоба ПРОПУСКАЕТСЯ
 # (warning в консоли, пайплайн зелёный, ошибок нет).
+#
+# Опциональные CI/CD variables:
+#   DEPLOY_SKIP_HOST_KEY_CHECK=1 — отключает проверку host key сервера при SSH
+#       (для пересозданных серверов, когда в known_hosts раннера остался старый
+#       ключ; НЕБЕЗОПАСНО — MITM-риск; альтернатива — ssh-keygen -R <host> на раннере).
 # =============================================================================
 
 stages:
@@ -113,7 +118,6 @@ deploy:test:
         echo "   Бандл: scripts/make_deploy_bundle.sh <id_rsa> <.env>"
         exit 0
       fi
-      apt-get update -qq && apt-get install -y -qq openssh-client ca-certificates curl
       export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_TEST"
       export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"
       export BACKEND_IMAGE="$BACKEND_IMAGE_SHA"
@@ -135,7 +139,6 @@ deploy:production:
         echo "   scripts/make_deploy_bundle.sh <id_rsa> <.env>  →  в DEPLOY_BUNDLE_PRODUCTION"
         exit 0
       fi
-      apt-get update -qq && apt-get install -y -qq openssh-client ca-certificates curl
       export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_PRODUCTION"
       export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"
       export BACKEND_IMAGE="$BACKEND_IMAGE_SHA"

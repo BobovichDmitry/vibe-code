@@ -110,3 +110,9 @@ CI-деплой в два этапа (build → deploy) с бандл-перем
 - Причина: в production-стадии копировался только `package.json` без лока; баг всплыл после обновления `node:22-alpine` (docker build `--pull`).
 - Фикс: `COPY package.json package-lock.json ./` + `npm ci --omit=dev --workspace=apps/backend` (детерминированно, минуя резолвинг arborist).
 - Проверено локально: `docker build -f docker/Dockerfile.backend .` — OK; smoke-тест образа — контейнер поднялся, `GET /api/users/count` → `{"total":1,"adminCount":1}`.
+
+### Доработка 2 (2026-09-05): skip проверки host key + мягкая установка зависимостей
+
+- Новая опциональная CI-переменная `DEPLOY_SKIP_HOST_KEY_CHECK=1` — отключает проверку host key сервера (`StrictHostKeyChecking=no` + `UserKnownHostsFile=/dev/null`) — для пересозданных серверов со старым ключом в known_hosts раннера (ошибка `REMOTE HOST IDENTIFICATION HAS CHANGED` в первом CI-прогоне). По умолчанию `accept-new`.
+- Установка ssh/curl перенесена в `deploy_ci.sh` и стала условной: на shell-раннере (не root) пакеты уже есть → apt не запускается (убраны ошибки Permission denied из лога); в docker-образе ubuntu — ставится.
+- Документировано в `.gitlab-ci.yml` (шапка) и `docs/deployment.md`.
