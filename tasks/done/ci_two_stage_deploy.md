@@ -103,3 +103,10 @@ CI-деплой в два этапа (build → deploy) с бандл-перем
 
 - Если бандл-переменная окружения (`DEPLOY_BUNDLE_TEST` / `DEPLOY_BUNDLE_PRODUCTION`) **не задана совсем** — deploy-джоба **пропускает деплой** с warning'ом в консоли («деплой пропущен») и завершается успехом (пайплайн зелёный), вместо падения. Проверка — early-exit в начале `script:` каждой джобы; установка пакетов тоже не выполняется при скипе.
 - `docs/deployment.md` — синхронизированы раздел «Требования и ограничения» и «Частые ошибки» (п. 7).
+
+### Фикс сборки backend (2026-09-01, из живого пайплайна git.obvu.ru)
+
+- `build:docker` падал на `Dockerfile.backend`, production-стадия: `npm install --omit=dev --workspace=apps/backend` → `npm error Cannot read properties of null (reading 'edgesOut')` (баг arborist npm 10.9.x: без `package-lock.json` + workspaces + omit=dev).
+- Причина: в production-стадии копировался только `package.json` без лока; баг всплыл после обновления `node:22-alpine` (docker build `--pull`).
+- Фикс: `COPY package.json package-lock.json ./` + `npm ci --omit=dev --workspace=apps/backend` (детерминированно, минуя резолвинг arborist).
+- Проверено локально: `docker build -f docker/Dockerfile.backend .` — OK; smoke-тест образа — контейнер поднялся, `GET /api/users/count` → `{"total":1,"adminCount":1}`.

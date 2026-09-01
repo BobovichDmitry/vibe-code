@@ -37,11 +37,13 @@ ENV PORT=3001
 # Каталог под SQLite (если DB_TYPE=sqlite).
 RUN mkdir -p /app/apps/backend/data
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/frontend/package.json ./apps/frontend/
 COPY apps/backend/package.json ./apps/backend/
 COPY e2e/package.json ./e2e/
-RUN npm install --omit=dev --no-audit --no-fund --workspace=apps/backend
+# npm ci (не install) — строго по локфайлу: без лока workspace+omit=dev ловит
+# баг arborist «Cannot read properties of null (reading 'edgesOut')» в npm 10.9.x.
+RUN npm ci --omit=dev --no-audit --no-fund --workspace=apps/backend
 
 # dist/ включает скомпилированные миграции (dist/migrations/*.js) —
 # нужны в проде (DB_SYNCHRONIZE=false → migrationsRun на старте).
