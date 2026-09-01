@@ -1,21 +1,36 @@
 # =============================================================================
 # GitLab CI — сборка образов (frontend Nuxt + backend Nest) в Registry и
-# деплой по SSH (pull + docker compose up) на prod-сервер.
+# CI-деплой по SSH (pull образов из Registry + docker compose up) на целевой
+# сервер.
 #
 # Архитектура: два отдельных сервиса (см. agents.md):
 #   frontend — Nuxt SSR (Dockerfile.frontend, порт 3000, edge за nginx-proxy);
 #   backend  (Nest API)  (Dockerfile.backend, порт 3001, внутренний без VIRTUAL_HOST).
 # Деплой: docker-compose.prod.yml (frontend + backend + postgres).
 #
-# Требуемые CI/CD variables (Settings → CI/CD → Variables, можно на группе):
-#   SSH_PRIVATE_KEY — приватный ключ (type: File или Variable) для SSH на сервер;
-#   DEPLOY_HOST     — ssh-цель вида user@host (или alias из ~/.ssh/config);
-#   DEPLOY_PATH     — путь к проекту на сервере (внутри — подпапка docker/ с
-#                     docker-compose.prod.yml, env и .env для compose);
-#   DEPLOY_COMPOSE_PROJECT (опционально) — имя compose-проекта (-p; дефолт —
-#                     $CI_PROJECT_NAME; должно совпадать с тем, под каким
-#                     проект уже поднят на сервере, чтобы обновлялись те же
-#                     контейнеры, а не создавались новые).
+# Этап deploy НЕ собирает ничего на сервере: джоба получает base64-бандл
+# окружения (SSH-ключ + .env) из CI/CD Variables, передаёт его в
+# docker/deploy_ci.sh, который:
+#   — ставит на сервере всё с нуля (ansible → docker → nginx-proxy);
+#   — пуллит собранные образы с ВРЕМЕННЫМ токеном (CI_JOB_TOKEN);
+#   — поднимает docker-compose.prod.yml и прогоняет healthcheck.
+#
+# Требуемые CI/CD variables (Settings → CI/CD → Variables, protected+masked;
+# по ОДНОЙ на окружение):
+#   DEPLOY_BUNDLE_TEST        — base64-бандл для тест-сервера;
+#   DEPLOY_BUNDLE_PRODUCTION  — base64-бандл для прод-сервера.
+#
+#   Бандл = base64( tar.gz[ id_rsa, .env ] ) — формируется скриптом
+#   scripts/make_deploy_bundle.sh <id_rsa> <.env>:
+#     id_rsa — приватный SSH-ключ БЕЗ passphrase;
+#     .env   — SSH_HOST, SSH_USER, DOMAIN, LETSENCRYPT_EMAIL, ADMIN_PASSWORD,
+#              PROJECT_NAME (обязательные); SSH_PORT, PROJECT_DIR, PROXY_DIR,
+#              BRAND_*, ADMIN_LOGIN (опциональные). SSH_KEY не нужен — ключ
+#              из бандла.
+#
+# Ветка master (default) → build → авто-деплой в test И production.
+# Если бандл-переменная окружения не задана — деплой-джоба ПРОПУСКАЕТСЯ
+# (warning в консоли, пайплайн зелёный, ошибок нет).
 # =============================================================================
 
 stages:
@@ -67,41 +82,61 @@ build:docker:
     - if: $CI_COMMIT_TAG
 
 # =============================================
-# Deploy — SSH на сервер: pull образов и up compose
+# Deploy — CI-деплой из Registry (без сборки на сервере)
 # =============================================
-# Внимание: деплой-переменные (DEPLOY_HOST, DEPLOY_PATH, DEPLOY_COMPOSE_PROJECT,
-# SSH_PRIVATE_KEY) задаются в Settings → CI/CD → Variables (или на группе) —
-# НЕ хардкодим их здесь: переменные job-уровня перекрыли бы групповые.
+# Джоба декодирует бандл окружения (DEPLOY_BUNDLE_<ENV>) и запускает
+# docker/deploy_ci.sh: он ставит ansible/docker/nginx-proxy на пустом сервере,
+# пуллит образы с временным токеном (CI_JOB_TOKEN) и поднимает compose.
+# ВНИМАНИЕ: бандл-переменные задаются в Settings → CI/CD → Variables
+# (protected + masked) — НЕ хардкодим их здесь.
 
-.base_deploy:
-  image: obvu/ssh_deployer
-  before_script:
-    - mkdir -p ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-  after_script:
-    - rm -f ~/.ssh/id_rsa
+.base_deploy_ci:
+  image: ubuntu:24.04
   variables:
-    GIT_STRATEGY: none
-    # Compose-проект (-p) — по умолчанию $CI_PROJECT_NAME; можно переопределить
-    # переменной DEPLOY_COMPOSE_PROJECT в CI/CD (если на сервере проект поднят
-    # ansible с другим -p <project_name>).
+    # Нужны ansible/ и docker/ из репо (архив исходников для сервера).
+    GIT_STRATEGY: fetch
+
+deploy:test:
+  extends: .base_deploy_ci
+  stage: deploy
+  environment:
+    name: test
+  resource_group: deploy-test
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    # Бандл не задан → деплой ПРОПУСКАЕТСЯ (джоба зелёная), а не падает.
     - |
-      COMPOSE_PROJECT="${DEPLOY_COMPOSE_PROJECT:-$CI_PROJECT_NAME}"
-      ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$DEPLOY_HOST" "
-        cd '$DEPLOY_PATH/docker' &&
-        FRONTEND_IMAGE='$FRONTEND_IMAGE_SHA' BACKEND_IMAGE='$BACKEND_IMAGE_SHA' \
-          docker compose -p '$COMPOSE_PROJECT' -f docker-compose.prod.yml pull frontend backend &&
-        FRONTEND_IMAGE='$FRONTEND_IMAGE_SHA' BACKEND_IMAGE='$BACKEND_IMAGE_SHA' \
-          docker compose -p '$COMPOSE_PROJECT' -f docker-compose.prod.yml up -d &&
-        docker compose -p '$COMPOSE_PROJECT' -f docker-compose.prod.yml ps
-      "
+      if [ -z "${DEPLOY_BUNDLE_TEST:-}" ]; then
+        echo "⚠  DEPLOY_BUNDLE_TEST не задан — деплой в окружение 'test' ПРОПУЩЕН."
+        echo "   Чтобы включить: Settings → CI/CD → Variables → DEPLOY_BUNDLE_TEST (protected+masked)."
+        echo "   Бандл: scripts/make_deploy_bundle.sh <id_rsa> <.env>"
+        exit 0
+      fi
+      apt-get update -qq && apt-get install -y -qq openssh-client ca-certificates curl
+      export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_TEST"
+      export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"
+      export BACKEND_IMAGE="$BACKEND_IMAGE_SHA"
+      bash docker/deploy_ci.sh
 
 deploy:production:
-  extends: .base_deploy
+  extends: .base_deploy_ci
   stage: deploy
   environment:
     name: production
+  resource_group: deploy-production
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      if [ -z "${DEPLOY_BUNDLE_PRODUCTION:-}" ]; then
+        echo "⚠ DEPLOY_BUNDLE_PRODUCTION не задан — деплой в окружение 'production' ПРОПУЩЕН."
+        echo "   Заведи переменную в Settings → CI/CD → Variables (protected+masked):"
+        echo "   scripts/make_deploy_bundle.sh <id_rsa> <.env>  →  в DEPLOY_BUNDLE_PRODUCTION"
+        exit 0
+      fi
+      apt-get update -qq && apt-get install -y -qq openssh-client ca-certificates curl
+      export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_PRODUCTION"
+      export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"
+      export BACKEND_IMAGE="$BACKEND_IMAGE_SHA"
+      bash docker/deploy_ci.sh

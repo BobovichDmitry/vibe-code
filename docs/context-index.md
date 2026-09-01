@@ -4,7 +4,7 @@
 |------|---------|-------------------|
 | `GETTING_STARTED.md` | Запуск с нуля | Новому разработчику/агенту для старта |
 | `project-overview.md` | Общая архитектура | Понимание стека и структуры |
-| `deployment.md` | Docker, порты, env | Деплой, контейнеризация, конфиги |
+| `deployment.md` | Docker, порты, env | Деплой (deploy.sh, GitLab CI: build → deploy:test/production, бандл-переменные), контейнеризация, конфиги |
 | `agents.md` | Сводка для субагентов | Быстрая навигация и правила |
 | `areas/backend-api-structure.md` | Backend API (auth, users, files) | CRUD пользователей, JWT auth, S3-файлы |
 | `areas/auth-structure.md` | Аутентификация | JWT, login/logout, guard |

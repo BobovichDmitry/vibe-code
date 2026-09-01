@@ -30,13 +30,33 @@
     remote_src: true
     mode: "0600"
 
-# Build обоих сервисов (frontend = Nuxt, backend = Nest) из split Dockerfile'ов.
+# --- CI-режим (Registry): frontend_image/backend_image переданы через -e —
+# образы уже собраны в GitLab CI, сервер их только пуллит (без build).
+- name: Прокинуть Registry-образы в docker/.env (CI-режим)
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/docker/.env"
+    line: "{{ item.key }}={{ item.value }}"
+  loop:
+    - { key: FRONTEND_IMAGE, value: "{{ frontend_image }}" }
+    - { key: BACKEND_IMAGE, value: "{{ backend_image }}" }
+  when: frontend_image is defined and backend_image is defined
+
+- name: Pull frontend+backend из Registry (CI-режим, без сборки на сервере)
+  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} pull frontend backend
+  args:
+    chdir: "{{ project_dir }}/docker"
+  register: app_pull
+  changed_when: false
+  when: frontend_image is defined and backend_image is defined
+
+# --- Ручной режим (deploy.sh): build из исходников на сервере ---
 - name: Собрать frontend+backend (docker compose build)
   ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} build
   args:
     chdir: "{{ project_dir }}/docker"
   register: app_build
   changed_when: "'SUCCESSFULLY' in app_build.stderr or 'naming to' in app_build.stderr"
+  when: frontend_image is not defined or backend_image is not defined
 
 - name: Поднять frontend+backend+postgres (docker compose up -d)
   ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} up -d
@@ -48,5 +68,6 @@
 - name: Вывести результат deploy
   ansible.builtin.debug:
     msg:
-      - "Build: {{ app_build.stderr_lines[-3:] | default(['no output']) }}"
-      - "Up: {{ app_up.stderr_lines[-3:] | default(['no output']) }}"
+      - "Registry-pull: {{ (app_pull.stderr_lines | default(['—']))[-3:] }}"
+      - "Build: {{ (app_build.stderr_lines | default(['—']))[-3:] }}"
+      - "Up: {{ (app_up.stderr_lines | default(['—']))[-3:] }}"

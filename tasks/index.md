@@ -13,6 +13,7 @@
 
 ## Done
 <!-- выполненные задачи. Файл перенесён в done/, детали — внутри файла -->
+- [ci_two_stage_deploy.md](done/ci_two_stage_deploy.md) — CI-деплой в 2 этапа: build (Registry) → deploy через `docker/deploy_ci.sh` (base64-бандл на окружение `DEPLOY_BUNDLE_*`: SSH-ключ + .env; pull образов с CI_JOB_TOKEN, без сборки на сервере; подготовка пустого сервера ansible-ом; автодеплой test+production на master; локальный тест через `./.ci-bundle`) (2026-09-05)
 - [ssr_and_portable_deploy.md](done/ssr_and_portable_deploy.md) — миграция frontend на Nuxt 3 (SSR, history-роутинг, cookie-auth) + разделение на два сервиса (Nuxt:3000 edge, Nest:3001 API) + портируемый деплой (deploy.sh/ansible/Dockerfile без форк-специфичных хардкодов) + гайд миграции в docs (2026-08-27)
 - [s3_file_service.md](done/s3_file_service.md) — подключить S3 на v3 SDK: модуль `files/` (FileService upload/delete/stream/download/presigned get+put + FileEntity + контроллер /api/files), без ресайза (2025-01-27)
 - [01_transfer_task_mechanics.md](done/01_transfer_task_mechanics.md) — перенести механику очереди задач из agent-hosted: папка `tasks/` + 4 скилла + сабагенты code-solver/e2e-writer (оба стиля e2e) + доработка e2e-инфры (2025-01-24)

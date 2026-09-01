@@ -177,6 +177,87 @@ acme-companion, собирает и поднимает frontend+backend+postgres
 на сервере (тег `proxy`). Каждый проект-контейнер подключается к external-сети
 `reverse-proxy` и объявляет `VIRTUAL_HOST`/`LETSENCRYPT_HOST`/`LETSENCRYPT_EMAIL`.
 
+## Деплой через GitLab CI (автоматический)
+
+Пайплайн [`.gitlab-ci.yml`](../.gitlab-ci.yml): этапы **build → deploy**. На push
+в `master` обе джобы `deploy:test` и `deploy:production` запускаются **автоматом**
+(перевести прод в manual — правка одной строки `when` в rules джобы).
+
+- **`build:docker`** — собирает и пушит оба образа в Registry
+  (`$CI_REGISTRY_IMAGE/{frontend,backend}`) с тегами `$CI_COMMIT_SHORT_SHA` +
+  `$CI_COMMIT_REF_SLUG`; на default-ветке дополнительно тег `latest`.
+- **`deploy:test` / `deploy:production`** — деплой из Registry **без сборки на
+  сервере**: каждая джоба берёт ОДНУ переменную окружения и запускает
+  [`docker/deploy_ci.sh`](../docker/deploy_ci.sh). `resource_group` на каждой
+  джобе защищает от параллельных деплоев одного окружения.
+
+### Бандл-переменные (Settings → CI/CD → Variables, флаги protected + masked)
+
+| Variable | Окружение |
+|----------|-----------|
+| `DEPLOY_BUNDLE_TEST` | тест-сервер |
+| `DEPLOY_BUNDLE_PRODUCTION` | прод-сервер |
+
+Каждая переменная — **base64-бандл** `base64(tar.gz[id_rsa, .env])`:
+
+- `id_rsa` — приватный SSH-ключ **без passphrase** (юзер с sudo на сервере);
+- `.env` — тот же формат, что у `deploy.sh`: обязательные `SSH_HOST`, `SSH_USER`,
+  `DOMAIN`, `LETSENCRYPT_EMAIL`, `ADMIN_PASSWORD`, `PROJECT_NAME`; опциональные
+  `SSH_PORT`, `PROJECT_DIR`, `ARCHIVE_PATH`, `PROXY_DIR`, `BRAND_*`, `ADMIN_LOGIN`
+  (`SSH_KEY` указывать не нужно — ключ берётся из бандла).
+
+Старые переменные `DEPLOY_HOST` / `DEPLOY_PATH` / `SSH_PRIVATE_KEY` /
+`DEPLOY_COMPOSE_PROJECT` больше **не используются**. Бандл содержит приватный
+ключ — задавать только через GitLab Variables (protected + masked) или класть в
+`./.ci-bundle` (в `.gitignore`, коммитить нельзя).
+
+### Формирование бандла и локальный тест-запуск
+
+```bash
+# Формирует base64-строку в stdout → вставить в GitLab Variable ИЛИ в .ci-bundle:
+scripts/make_deploy_bundle.sh <path/to/id_rsa> <path/to/.env> > .ci-bundle
+
+# Тест-запуск без GitLab: CI_REGISTRY/CI_JOB_TOKEN не заданы → registry-логин
+# скипается (считается, что docker login в registry на сервере сделан руками).
+DEPLOY_BUNDLE="$(cat .ci-bundle)" \
+FRONTEND_IMAGE="registry.example.com/proj/frontend:abc123" \
+BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
+  bash docker/deploy_ci.sh
+```
+
+`make_deploy_bundle.sh` предупреждает, если ключ с passphrase или в `.env` нет
+обязательных переменных.
+
+### Поток docker/deploy_ci.sh
+
+1. Декодирует бандл (`DEPLOY_BUNDLE` из CI или `./.ci-bundle` для ручного запуска)
+   → SSH-ключ + `.env`.
+2. На **пустом** сервере ставит всё с нуля: ansible → docker (роль `deps`) →
+   nginx-proxy + acme-companion (роль `proxy`); sftp'ит архив исходников +
+   deploy-env.sh.
+3. Генерирует `.app.secrets` (db_password, jwt_secret — один раз, при повторных
+   деплоях переиспользуются) и `ansible/vars.yml`.
+4. Логин в Registry **временным токеном** (`CI_JOB_TOKEN`, пароль через stdin;
+   живёт только в рамках джобы), после деплоя — `docker logout`.
+5. Запускает `ansible-playbook` с extra vars `frontend_image`/`backend_image` →
+   роль `app` в **Registry-режиме**: прокидывает `FRONTEND_IMAGE`/`BACKEND_IMAGE`
+   (теги по SHA) в `docker/.env` и делает `docker compose pull frontend backend`
+   вместо build. Без этих vars — старый build-режим (ручной `deploy.sh` не менялся).
+6. Healthcheck: `https://$DOMAIN/api/users/count` → 200.
+
+### Требования и ограничения CI-деплоя
+
+- **Бандл-переменная не задана → деплой пропускается**: джоба завершается успешно с
+  warning'ом в консоли («деплой пропущен»), пайплайн остаётся зелёным. Чтобы деплой
+  заработал — заведите `DEPLOY_BUNDLE_*` в Settings → CI/CD → Variables (protected+masked).
+- Ветка `master` — **protected**: иначе protected-переменные недоступны и джоба
+  пропустит деплой (а не упадёт) — бандл просто не будет виден на непротектед ветке.
+- `CI_JOB_TOKEN` открывает только Registry **своего** проекта; для образов из
+  чужого проекта нужен deploy token.
+- Чек-лист: оба образа в Registry (тег SHA) → бандлы заведены (protected+masked,
+  ветка protected) → DNS домена указывает на IP сервера → джобы зелёные →
+  `curl https://<DOMAIN>/api/users/count` → 200.
+
 ## Частые ошибки
 
 1. **JWT-secret по дефолту** — замените `dev-secret-change-me` на production-ключ.
@@ -190,6 +271,14 @@ acme-companion, собирает и поднимает frontend+backend+postgres
    (`useRequestHeaders(['cookie'])`).
 6. **Cookie не ставится** — `COOKIE_SECURE=true` требует HTTPS; в dev оставьте
    пустым/false.
+7. **Deploy-джоба зелёная, но деплой пропущен (warning в логе)** — бандл-переменная
+   (`DEPLOY_BUNDLE_TEST` / `DEPLOY_BUNDLE_PRODUCTION`) не заведена в
+   Settings → CI/CD → Variables, или ветка не protected (protected-переменные
+   недоступны на обычных ветках). Заведите бандл — и деплой включится
+   на следующем пайплайне.
+8. **`docker pull` 401/unauthorized на сервере** — Registry-логин не выполнен:
+   при ручном тест-запуске `deploy_ci.sh` без `CI_REGISTRY`/`CI_JOB_TOKEN`
+   авторизуйтесь в registry на сервере руками (`docker login`).
 
 ## Чек-лист деплоя
 
