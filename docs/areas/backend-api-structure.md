@@ -8,7 +8,7 @@ Nest.js API с глобальным префиксом `/api`. Модули: `Au
 
 | Файл | Роль |
 |------|------|
-| `apps/backend/src/main.ts` | Entry point: bootstrap, cookie-parser, CORS, global prefix 'api', порт 3001 (чистый API, статика не раздаётся) |
+| `apps/backend/src/main.ts` | Entry point: bootstrap (перед стартом Nest — `ensureDatabaseExists()`: автосоздание БД для postgres), cookie-parser, CORS, global prefix 'api', порт 3001 (чистый API, статика не раздаётся) |
 | `apps/backend/src/env.ts` | Загрузчик env: `.env` → `.env.local` (override), внешнее окружение — наивысший приоритет |
 | `apps/backend/src/app.module.ts` | Root module: DatabaseModule, AuthModule, UsersModule, BrandingModule, FilesModule |
 | `apps/backend/src/auth/` | JWT auth module |
@@ -101,6 +101,7 @@ Nest.js API с глобальным префиксом `/api`. Модули: `Au
 - TypeORM `synchronize: true` (auto-migrate, dev) / миграции (prod)
 - SQLite for dev: `DB_TYPE=sqlite`, `DB_SQLITE_PATH=./data/database.sqlite`
 - PostgreSQL for prod: `DB_TYPE=postgres`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`
+- Автосоздание БД (postgres): перед инициализацией TypeORM `main.ts` вызывает `ensureDatabaseExists()` — подключается к системной базе `postgres` (ретраи 5×3с) и создаёт `DB_DATABASE`, если её нет; для sqlite — no-op. Требуется `DB_USERNAME` с правом `CREATEDB` (в шаблоне `POSTGRES_USER` — superuser). Подробнее — `docs/areas/database-structure.md`
 
 **Сущности** (общий список `ENTITIES` в `database/entities.ts`):
 - `user` — пользователи (login, passwordHash, role, createdAt, updatedAt)
@@ -117,4 +118,4 @@ S3-переменные: `S3_ENDPOINT`, `S3_PUBLIC_URL`, `S3_REGION`, `S3_BUCKET
 1. **`EADDRINUSE` on port 3000**: `npm run kill:backend`
 2. **JWT expired**: token expires in 24h, re-login
 3. **CORS blocked**: set `CORS_ORIGIN` in backend `.env`
-4. **DB not ready**: wait for TypeORM connection (check `logs/backend.log`)
+4. **DB not ready**: wait for TypeORM connection (check `logs/backend.log`). Для postgres БД создаётся автоматически при старте (ретраи 5×3с); если всё равно не подключается — проверьте `DB_HOST`/`DB_USERNAME`/`DB_PASSWORD` и право `CREATEDB`

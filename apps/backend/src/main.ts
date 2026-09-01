@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { ensureDatabaseExists } from './database/ensure-database';
 
 /**
  * Точка входа Nest.js (API на /api).
@@ -20,6 +21,10 @@ import { AppModule } from './app.module';
  * Раздача статики frontend/dist убрана — теперь это делает Nuxt (Nitro).
  */
 async function bootstrap() {
+  // postgres: если DB_DATABASE ещё не существует (том postgres был
+  // проинициализирован с другим именем) — создаём до инициализации TypeORM.
+  await ensureDatabaseExists();
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // CORS: из CORS_ORIGIN (comma-separated). По умолчанию — Nuxt-origin (dev).

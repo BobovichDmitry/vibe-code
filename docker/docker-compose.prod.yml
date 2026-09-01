@@ -70,7 +70,9 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME}']
+      # -d обязателен: без него pg_isready стучится в БД с именем юзера
+      # (которой нет — есть ${DB_DATABASE}) и засоряет логи FATAL'ами каждые 5с.
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}']
       interval: 5s
       timeout: 5s
       retries: 5

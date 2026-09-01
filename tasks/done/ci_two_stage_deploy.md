@@ -116,3 +116,16 @@ CI-деплой в два этапа (build → deploy) с бандл-перем
 - Новая опциональная CI-переменная `DEPLOY_SKIP_HOST_KEY_CHECK=1` — отключает проверку host key сервера (`StrictHostKeyChecking=no` + `UserKnownHostsFile=/dev/null`) — для пересозданных серверов со старым ключом в known_hosts раннера (ошибка `REMOTE HOST IDENTIFICATION HAS CHANGED` в первом CI-прогоне). По умолчанию `accept-new`.
 - Установка ssh/curl перенесена в `deploy_ci.sh` и стала условной: на shell-раннере (не root) пакеты уже есть → apt не запускается (убраны ошибки Permission denied из лога); в docker-образе ubuntu — ставится.
 - Документировано в `.gitlab-ci.yml` (шапка) и `docs/deployment.md`.
+
+### Доработка 3 (2026-09-05): автосоздание БД при старте backend
+
+- Проблема с нового деплоя: `postgres FATAL: database "gmoreva-platform" does not exist` — POSTGRES_DB в контейнере postgres применяется только при ПЕРВОЙ инициализации тома; при переименовании проекта/старом томе backend не мог подключиться.
+- Фикс: `apps/backend/src/database/ensure-database.ts` — при старте (DB_TYPE=postgres) backend подключается к системной базе `postgres` (5 попыток × 3с), проверяет pg_database и создаёт DB_DATABASE, если её нет; далее TypeORM migrationsRun накатывает таблицы. sqlite — no-op. Вызов в `main.ts` до Nest bootstrap.
+- Проверено: tsc --noEmit; интеграционный тест на живом postgres-контейнере (создание недостающей БД + идемпотентный повтор). Доки обновлены (database-structure, backend-api-structure, deployment).
+- Попутно обнаружено на сервере: осиротевший compose-проект `docker` (/opt/docker, дубль gmoreva-platform с тем же volume/env) — кандидат на `docker compose -p docker down` + удаление.
+
+### Доработка 4 (2026-09-05): FATAL "database does not exist" в логах postgres — шум healthcheck'а
+
+- Диагноз (по живому серверу): БД создалась при первой инициализации тома; 1524 FATAL'а "database \"<user>\" does not exist" с интервалом ровно 5с — это healthcheck `pg_isready -U ${DB_USERNAME}` без `-d`: pg_isready дефолтит на БД = имя юзера, которой нет (есть только `<project>_db`). pg_isready всё равно возвращает 0, healthcheck = healthy, приложение работало.
+- Фикс: `docker/docker-compose.prod.yml` — healthcheck теперь `pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}` (проверяет реальную БД, шум исчезнет после следующего `up`/пересоздания контейнера postgres).
+- ensure-database.ts (Доработка 3) остаётся: закрывает реальные случаи рассинхрона тома и env.

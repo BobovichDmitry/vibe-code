@@ -55,6 +55,11 @@ docker compose -f docker-compose.prod.yml up -d --build
 - `backend` — без `VIRTUAL_HOST`, без проброса порта, внутренняя сеть.
 - `postgres` — без проброса 5432.
 
+При старте backend сам создаёт `DB_DATABASE`, если её нет (том postgres мог быть
+проинициализирован с другим именем — переименование проекта, старый деплой;
+раньше был бы `FATAL: database "X" does not exist`). Нужно право `CREATEDB` у
+`DB_USERNAME` (в шаблоне `POSTGRES_USER` — superuser). См. `docs/areas/database-structure.md`.
+
 ### E2E tests (`docker-compose.e2e.yml`)
 
 ```bash
@@ -269,7 +274,9 @@ BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
 2. **CORS blocked** — `CORS_ORIGIN` backend должен включать домен (prod) /
    `http://localhost:3000` (dev). SSR-фетч идёт мимо CORS.
 3. **Backend не стартует** — проверьте `docker compose logs backend`; частая
-   причина — PostgreSQL ещё не готов (`depends_on` / healthcheck).
+   причина — PostgreSQL ещё не готов. Backend сам ретраит подключение
+   (5 попыток × 3с) и создаёт БД при отсутствии (`ensure-database.ts`);
+   если всё равно падает — проверьте `DB_USERNAME`/`DB_PASSWORD` и право `CREATEDB`.
 4. **`/api` 404 на клиенте** — Nuxt не проксирует: проверьте `routeRules` в
    `nuxt.config.ts` и `NUXT_API_BASE`.
 5. **401 на /admin под SSR** — cookie не проксируется: проверьте `useApi`
