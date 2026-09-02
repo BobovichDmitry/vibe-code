@@ -73,7 +73,7 @@ build:docker:
     # (monorepo: package.json + apps/* нужны обоим сборкам).
     # Каждый образ пушится с ДВУМЯ тегами: хеш текущего коммита (иммутабельный,
     # именно его пуллит deploy:*) и имя текущей ветки (движущийся тег).
-    - echo "→ Сборка образов с тегами: sha=$IMAGE_TAG_SHA branch=$IMAGE_TAG_BRANCH"
+    - 'echo "→ Сборка образов с тегами: sha=$IMAGE_TAG_SHA branch=$IMAGE_TAG_BRANCH"'
     - docker build --pull -f docker/Dockerfile.frontend -t "$FRONTEND_IMAGE_SHA" -t "$FRONTEND_IMAGE_BRANCH" .
     - docker build --pull -f docker/Dockerfile.backend -t "$BACKEND_IMAGE_SHA" -t "$BACKEND_IMAGE_BRANCH" .
     - docker push "$FRONTEND_IMAGE_SHA"
