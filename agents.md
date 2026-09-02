@@ -108,6 +108,8 @@ The user runs `dev:*:log` and `kill:*` commands manually. **Do NOT start backend
 When debugging a problem, read the logs instead:
 - `logs/backend.log` — current backend log
 - `logs/frontend.log` — current frontend log
+- `logs/deploy.log` — deployment log (`./deploy.sh`, manual deploy)
+- `logs/deploy-ci.log` — deployment log (`docker/deploy_ci.sh`, CI deploy)
 - `logs/backend.pid` / `logs/frontend.pid` — process IDs (if present, the service is running)
 
 ### Build & Prod

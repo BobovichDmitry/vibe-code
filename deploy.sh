@@ -23,6 +23,13 @@ set -euo pipefail
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$ROOT"
 
+# --- Дублируем весь вывод в logs/deploy.log (и в stdout) ---
+mkdir -p "$ROOT/logs"
+LOG_FILE="$ROOT/logs/deploy.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo ""
+echo "===== deploy.sh — $(date '+%Y-%m-%d %H:%M:%S') ====="
+
 # --- 1. .env ---
 if [ ! -f .env ]; then
   echo "✗ Нет .env в корне. Выполните: cp .env.example .env — и заполните." >&2

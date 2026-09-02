@@ -56,6 +56,13 @@ set -euo pipefail
 ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd )"
 cd "$ROOT"
 
+# --- Дублируем весь вывод в logs/deploy-ci.log (и в stdout/CI-джобу) ---
+mkdir -p "$ROOT/logs"
+LOG_FILE="$ROOT/logs/deploy-ci.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo ""
+echo "===== deploy_ci.sh — $(date '+%Y-%m-%d %H:%M:%S') ====="
+
 # --- 1. CI-переменные ---
 # Бандл: из DEPLOY_BUNDLE (CI) или из файла ./.ci-bundle (локальный тест-запуск).
 if [ -z "${DEPLOY_BUNDLE:-}" ] && [ -f "$ROOT/.ci-bundle" ]; then

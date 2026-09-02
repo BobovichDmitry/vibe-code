@@ -161,6 +161,10 @@ acme-companion, собирает и поднимает frontend+backend+postgres
 Полная инструкция — в [`ansible/README.md`](../ansible/README.md) и
 [`deploy.sh`](../deploy.sh).
 
+Логи деплоя: `./deploy.sh` дублирует весь свой вывод в **`logs/deploy.log`**
+(в терминале вывод остаётся прежним). Каждый запуск дописывается в файл с
+заголовком-разделителем по времени запуска.
+
 ### Портируемость по форкам
 
 - `PROJECT_NAME` — **обязателен** в `.env` (нет дефолта, нет хардкода).
@@ -189,8 +193,9 @@ acme-companion, собирает и поднимает frontend+backend+postgres
 (перевести прод в manual — правка одной строки `when` в rules джобы).
 
 - **`build:docker`** — собирает и пушит оба образа в Registry
-  (`$CI_REGISTRY_IMAGE/{frontend,backend}`) с тегами `$CI_COMMIT_SHORT_SHA` +
-  `$CI_COMMIT_REF_SLUG`; на default-ветке дополнительно тег `latest`.
+  (`$CI_REGISTRY_IMAGE/{frontend,backend}`) с двумя тегами: `$CI_COMMIT_SHORT_SHA`
+  (иммутабельный, именно его пуллят джобы деплоя) + `$CI_COMMIT_REF_SLUG`
+  (движущийся тег текущей ветки). Тег `latest` НЕ создаётся.
 - **`deploy:test` / `deploy:production`** — деплой из Registry **без сборки на
   сервере**: каждая джоба берёт ОДНУ переменную окружения и запускает
   [`docker/deploy_ci.sh`](../docker/deploy_ci.sh). `resource_group` на каждой
@@ -235,7 +240,8 @@ BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
 
 ### Поток docker/deploy_ci.sh
 
-1. Декодирует бандл (`DEPLOY_BUNDLE` из CI или `./.ci-bundle` для ручного запуска)
+1. Декодирует бандл (`DEPLOY_BUNDLE` из CI или `./.ci-bundle` для ручного запуска;
+   декодер для локальной отладки — `scripts/decode-bundle.sh`)
    → SSH-ключ + `.env`.
 2. На **пустом** сервере ставит всё с нуля: ansible → docker (роль `deps`) →
    nginx-proxy + acme-companion (роль `proxy`); sftp'ит архив исходников +
@@ -249,6 +255,10 @@ BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
    (теги по SHA) в `docker/.env` и делает `docker compose pull frontend backend`
    вместо build. Без этих vars — старый build-режим (ручной `deploy.sh` не менялся).
 6. Healthcheck: `https://$DOMAIN/api/users/count` → 200.
+
+Логи деплоя: `deploy_ci.sh` дублирует весь свой вывод в **`logs/deploy-ci.log`**
+(и в stdout, т.е. в лог CI-джобы). Каждый запуск дописывается в файл с
+заголовком-разделителем по времени запуска.
 
 ### Требования и ограничения CI-деплоя
 
