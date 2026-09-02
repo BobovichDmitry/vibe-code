@@ -175,6 +175,8 @@ echo "→ Сборка архива исходников..."
 ARCHIVE_LOCAL="/tmp/${PROJECT_NAME}.tar.gz"
 DEPLOY_ENV_LOCAL="/tmp/${PROJECT_NAME}-deploy-env.sh"
 rm -f "$ARCHIVE_LOCAL" "$DEPLOY_ENV_LOCAL"
+# Архив: серверу нужны только ansible/, docker/ и корневые файлы — код
+# приложения приезжает в Docker-образах из Registry. Лишнее не отправляем.
 tar --exclude=node_modules \
     --exclude=dist \
     --exclude=.git \
@@ -184,8 +186,17 @@ tar --exclude=node_modules \
     --exclude=test-results \
     --exclude=.env \
     --exclude=.app.secrets \
+    --exclude=apps \
+    --exclude=e2e \
+    --exclude=docs \
+    --exclude=tasks \
+    --exclude=.idea \
+    --exclude=.pi \
+    --exclude=.ai \
     --exclude='*.tsbuildinfo' \
     --exclude=deploy-vars.yml \
+    --exclude=questions.md \
+    --exclude=readme-for-agents.md \
     -czf "$ARCHIVE_LOCAL" -C "$ROOT" .
 echo "   архив: $(du -h "$ARCHIVE_LOCAL" | cut -f1)"
 
