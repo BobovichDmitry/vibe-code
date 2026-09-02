@@ -45,13 +45,15 @@ stages:
 variables:
   DOCKER_TLS_CERTDIR: ""
   DOCKER_DRIVER: overlay2
-  # Реестр-образы: два сервиса (split Dockerfile, монолита больше нет).
-  FRONTEND_IMAGE_SHA: "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_SHORT_SHA"
-  FRONTEND_IMAGE_REF: "$CI_REGISTRY_IMAGE/frontend:$CI_COMMIT_REF_SLUG"
-  FRONTEND_IMAGE_LATEST: "$CI_REGISTRY_IMAGE/frontend:latest"
-  BACKEND_IMAGE_SHA: "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_SHORT_SHA"
-  BACKEND_IMAGE_REF: "$CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG"
-  BACKEND_IMAGE_LATEST: "$CI_REGISTRY_IMAGE/backend:latest"
+  # --- Теги образов (GitLab расширяет их на момент запуска джобы) ---
+  # :<commit-sha> — иммутабельная версия конкретного коммита (деплой строго по ней)
+  # :<branch>     — движущийся тег текущей ветки (для отладки/ручного pull)
+  IMAGE_TAG_SHA: "$CI_COMMIT_SHORT_SHA"
+  IMAGE_TAG_BRANCH: "$CI_COMMIT_REF_SLUG"
+  FRONTEND_IMAGE_SHA: "$CI_REGISTRY_IMAGE/frontend:${CI_COMMIT_SHORT_SHA}"
+  FRONTEND_IMAGE_BRANCH: "$CI_REGISTRY_IMAGE/frontend:${CI_COMMIT_REF_SLUG}"
+  BACKEND_IMAGE_SHA: "$CI_REGISTRY_IMAGE/backend:${CI_COMMIT_SHORT_SHA}"
+  BACKEND_IMAGE_BRANCH: "$CI_REGISTRY_IMAGE/backend:${CI_COMMIT_REF_SLUG}"
 
 # =============================================
 # Build — собирает и пушит ОБА образа в Registry
@@ -69,19 +71,15 @@ build:docker:
   script:
     # Контекст — корень репо: Dockerfile'ы сами копируют нужные workspace-папки
     # (monorepo: package.json + apps/* нужны обоим сборкам).
-    - docker build --pull -f docker/Dockerfile.frontend -t "$FRONTEND_IMAGE_SHA" -t "$FRONTEND_IMAGE_REF" .
-    - docker build --pull -f docker/Dockerfile.backend -t "$BACKEND_IMAGE_SHA" -t "$BACKEND_IMAGE_REF" .
+    # Каждый образ пушится с ДВУМЯ тегами: хеш текущего коммита (иммутабельный,
+    # именно его пуллит deploy:*) и имя текущей ветки (движущийся тег).
+    - echo "→ Сборка образов с тегами: sha=$IMAGE_TAG_SHA branch=$IMAGE_TAG_BRANCH"
+    - docker build --pull -f docker/Dockerfile.frontend -t "$FRONTEND_IMAGE_SHA" -t "$FRONTEND_IMAGE_BRANCH" .
+    - docker build --pull -f docker/Dockerfile.backend -t "$BACKEND_IMAGE_SHA" -t "$BACKEND_IMAGE_BRANCH" .
     - docker push "$FRONTEND_IMAGE_SHA"
-    - docker push "$FRONTEND_IMAGE_REF"
+    - docker push "$FRONTEND_IMAGE_BRANCH"
     - docker push "$BACKEND_IMAGE_SHA"
-    - docker push "$BACKEND_IMAGE_REF"
-    - |
-      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        docker tag "$FRONTEND_IMAGE_SHA" "$FRONTEND_IMAGE_LATEST"
-        docker push "$FRONTEND_IMAGE_LATEST"
-        docker tag "$BACKEND_IMAGE_SHA" "$BACKEND_IMAGE_LATEST"
-        docker push "$BACKEND_IMAGE_LATEST"
-      fi
+    - docker push "$BACKEND_IMAGE_BRANCH"
   rules:
     - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
@@ -99,6 +97,8 @@ build:docker:
   image: ubuntu:24.04
   variables:
     # Нужны ansible/ и docker/ из репо (архив исходников для сервера).
+    # Образы для деплоя пиннятся тегом $CI_COMMIT_SHORT_SHA — запускается
+    # именно та версия, которая собрана из текущего коммита.
     GIT_STRATEGY: fetch
 
 deploy:test:
@@ -119,6 +119,8 @@ deploy:test:
         exit 0
       fi
       export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_TEST"
+      # Деплой строго по тегу = хеш текущего коммита (не latest, не ветка):
+      # распаковывается ровно та сборка, которую сделал build:docker этого коммита.
       export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"
       export BACKEND_IMAGE="$BACKEND_IMAGE_SHA"
       bash docker/deploy_ci.sh
@@ -140,6 +142,8 @@ deploy:production:
         exit 0
       fi
       export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_PRODUCTION"
+      # Деплой строго по тегу = хеш текущего коммита (не latest, не ветка):
+      # распаковывается ровно та сборка, которую сделал build:docker этого коммита.
       export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"
       export BACKEND_IMAGE="$BACKEND_IMAGE_SHA"
       bash docker/deploy_ci.sh
