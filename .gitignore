@@ -1,53 +1,54 @@
-# Dependencies
-node_modules/
+
+
+
+
+
+
+
+
+
+
 
 # Build outputs
-apps/frontend/dist/
-apps/frontend/.output/
-apps/frontend/.nuxt/
-apps/backend/dist/
-*.tsbuildinfo
-
-# Environment
-.env.local
-.env.*.local
-/.env
-.app.secrets
-
 # CI-деплой: локальный бандл (SSH-ключ + .env) — НИКОГДА не коммитить
-/.ci-bundle
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Local agent configs (Pi/MCP)
-/.ai/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Test artifacts
-e2e/test-results/
-e2e/playwright-report/
-e2e/videos/
-e2e/traces/
-
+# Coverage
 # Database
+# Dependencies
+# Environment
+# IDE
+# Local agent configs (Pi/MCP)
+# Logs
+# Notification test output
+# OS
+# Test artifacts
+*.log
 *.sqlite
 *.sqlite-journal
-
-# Logs
-logs/
-*.log
-
-# Notification test output
+*.swo
+*.swp
+*.tsbuildinfo
+.DS_Store
+.app.secrets
+.env.*.local
+.env.local
+.idea/
+.vscode/
+/.ai/
+/.ci-bundle
+/.env
+/scripts/decoded-bundle/
+Thumbs.db
+apps/backend/dist/
 apps/backend/notifications-test/
-
-# Coverage
+apps/frontend/.nuxt/
+apps/frontend/.output/
+apps/frontend/dist/
 coverage/
-test-results/*
 data/ed255519key
+e2e/playwright-report/
+e2e/test-results/
+e2e/traces/
+e2e/videos/
+logs/
+node_modules/
+test-results/*
