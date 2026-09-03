@@ -2,8 +2,8 @@
 # =============================================================================
 # deployci-test.sh — локальный тест-запуск CI-деплоя (без GitLab CI).
 # =============================================================================
-# Бандл берётся из ./.ci-bundle (см. scripts/make_deploy_bundle.sh).
-# Образы — собранные пайплайном теги :master из Registry.
+# Ключ расшифровки берётся из ./.agekey (gitignored, создаётся age-keygen)
+# или из env SOPS_AGE_KEY. Образы — собранные пайплайном теги :master из Registry.
 #
 # Registry-логин: если на целевом сервере уже сделан docker login в
 # registry.git.obvu.ru — запускать как есть. Иначе задай в скрипте:
@@ -13,11 +13,14 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-[ -f .ci-bundle ] || { echo "✗ Нет .ci-bundle: scripts/make_deploy_bundle.sh <id_rsa> <.env> > .ci-bundle" >&2; exit 1; }
+if [ -z "${SOPS_AGE_KEY:-}" ] && [ -z "${SOPS_AGE_KEY_FILE:-}" ] && [ ! -f .agekey ]; then
+  echo "✗ Нет ключа расшифровки: создай ./.agekey (age-keygen -o .agekey) или задай SOPS_AGE_KEY" >&2
+  exit 1
+fi
 
+export DEPLOY_ENV="${DEPLOY_ENV:-test}"
 export FRONTEND_IMAGE="registry.git.obvu.ru/amorev/vibecode-setup/frontend:master"
 export BACKEND_IMAGE="registry.git.obvu.ru/amorev/vibecode-setup/backend:master"
-export DEPLOY_BUNDLE="$(cat .ci-bundle)"
 
 # export CI_REGISTRY="registry.git.obvu.ru"
 # export REGISTRY_USER="amorev"

@@ -27,6 +27,19 @@ cd "$ROOT"
 mkdir -p "$ROOT/logs"
 LOG_FILE="$ROOT/logs/deploy.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
+
+# --- Маркер окончания деплоя (trap EXIT): агент/скрипт может ждать строку
+# DEPLOY-FINISHED (успех) или DEPLOY-FAILED (ошибка) в stdout или logs/deploy.log ---
+deploy_exit_marker() {
+  local code=$?
+  if [ "$code" = "0" ]; then
+    echo "### DEPLOY-FINISHED: deploy.sh завершился успешно (exit 0) ###"
+  else
+    echo "### DEPLOY-FAILED: deploy.sh завершился с ошибкой (exit $code) ###"
+  fi
+}
+trap deploy_exit_marker EXIT
+
 echo ""
 echo "===== deploy.sh — $(date '+%Y-%m-%d %H:%M:%S') ====="
 

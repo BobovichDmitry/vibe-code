@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
 # =============================================================================
-# deploy_ci.sh — CI-деплой VibeSetup UI (GitLab CI) из base64-бандла.
+# deploy_ci.sh — CI-деплой VibeSetup UI (GitLab CI) по SOPS-зашифрованным энвам.
 # =============================================================================
 # Вызывается джобой deploy:* из .gitlab-ci.yml (можно и вручную для отладки).
 #
 # Окружение (от CI):
-#   DEPLOY_BUNDLE   — base64( tar.gz[ id_rsa, .env ] ) — см. scripts/make_deploy_bundle.sh
-#                     .env — тот же формат, что для deploy.sh (SSH_HOST, SSH_USER,
-#                     DOMAIN, LETSENCRYPT_EMAIL, ADMIN_PASSWORD, PROJECT_NAME,
-#                     опц. SSH_PORT/PROJECT_DIR/PROXY_DIR/BRAND_*/ADMIN_LOGIN).
-#                     SSH_KEY из .env игнорируется — ключ берётся из бандла.
-#   CI_REGISTRY     — хост container registry (predefined в CI)
-#   CI_JOB_TOKEN    — временный токен для docker pull из Registry (живёт в рамках джобы)
-#   FRONTEND_IMAGE  — полный ref frontend-образа (напр. registry/.../frontend:abc1234)
-#   BACKEND_IMAGE   — полный ref backend-образа
+#   DEPLOY_ENV     — стенд (test | production) — какие .envs/<env>/* использовать;
+#   SOPS_AGE_KEY   — приватный age-ключ для расшифровки .envs/<env>/secret.enc.yaml
+#                    (в CI — из GitLab Variables; masked, никогда в argv/файлах);
+#   CI_REGISTRY    — хост container registry (predefined в CI);
+#   CI_JOB_TOKEN   — временный токен для docker pull из Registry (живёт в рамках джобы);
+#   FRONTEND_IMAGE — полный ref frontend-образа (напр. registry/.../frontend:abc1234);
+#   BACKEND_IMAGE  — полный ref backend-образа.
 #
 # Поток:
-#   1. Распаковывает бандл во временный каталог (ключ + .env).
+#   1. Расшифровывает .envs/$DEPLOY_ENV/secret.enc.yaml (sops+age), мержит с
+#      .envs/$DEPLOY_ENV/public.yaml (yq) и экспортирует всё как переменные
+#      окружения; base64 приватного ключа деплоя (DEPLOY_SSH_KEY) → во временный
+#      id_rsa (chmod 600).
 #   2. SSH на сервер: ставит ansible с нуля (если нет) — подготовка пустого сервера.
-#   3. Собирает tar.gz исходников + deploy-env.sh (переменные из бандл-.env),
-#      заливает через sftp, распаковывает на сервере.
+#   3. Собирает tar.gz исходников + deploy-env.sh (переменные из .envs/),
+#      заливает через ssh, распаковывает на сервере.
 #   4. Генерирует .app.secrets (db_password, jwt_secret), если нет; собирает
 #      ansible/vars.yml; логинится в Registry ВРЕМЕННЫМ токеном (CI_JOB_TOKEN).
 #   5. Запускает ansible-playbook: роли deps (docker) + proxy (nginx-proxy+acme)
@@ -30,26 +31,15 @@
 # ./deploy.sh (не зависит от этого скрипта).
 #
 # --- Локальный тест-запуск (без GitLab) ---
-# Бандл берётся из DEPLOY_BUNDLE, а если он пуст — из файла ./.ci-bundle в
-# корне репо (см. .gitignore — файл с ключом коммитить НЕЛЬЗЯ):
-#   scripts/make_deploy_bundle.sh <id_rsa> <.env> > .ci-bundle
+# Ключ расшифровки: env SOPS_AGE_KEY, SOPS_AGE_KEY_FILE или файл ./.agekey в
+# корне репо (gitignored). Образы — собранные пайплайном теги из Registry.
+#
+#   DEPLOY_ENV=test FRONTEND_IMAGE="registry.../frontend:master" \
+#   BACKEND_IMAGE="registry.../backend:master" bash docker/deploy_ci.sh
 #
 # Registry-логин выполняется только если заданы CI_REGISTRY и CI_JOB_TOKEN
 # (т.е. в CI). При ручном тестовом запуске они не нужны: считается, что
 # авторизация в registry (docker login) на сервере уже сделана руками.
-#
-# Пример тестового запуска на реальный сервер (public-образы, registry уже
-# авторизован на сервере):
-#   DEPLOY_BUNDLE="$(cat .ci-bundle)" \
-#   FRONTEND_IMAGE="nginx:alpine" BACKEND_IMAGE="nginx:alpine" \
-#     bash docker/deploy_ci.sh
-#
-# Тот же запуск с образами из GitLab Registry:
-#   DEPLOY_BUNDLE="$(cat .ci-bundle)" \
-#   CI_REGISTRY="registry.gitlab.com/ns/proj" CI_JOB_TOKEN="<deploy-token>" \
-#   FRONTEND_IMAGE="registry.gitlab.com/ns/proj/frontend:abc123" \
-#   BACKEND_IMAGE="registry.gitlab.com/ns/proj/backend:abc123" \
-#     bash docker/deploy_ci.sh
 # =============================================================================
 set -euo pipefail
 
@@ -60,16 +50,26 @@ cd "$ROOT"
 mkdir -p "$ROOT/logs"
 LOG_FILE="$ROOT/logs/deploy-ci.log"
 exec > >(tee -a "$LOG_FILE") 2>&1
+
+# --- Маркер окончания деплоя (trap EXIT): агент/скрипт может ждать строку
+# DEPLOY-FINISHED (успех) или DEPLOY-FAILED (ошибка) в stdout или logs/deploy-ci.log ---
+deploy_exit_marker() {
+  local code=$?
+  rm -rf "${BUNDLE_DIR:-}" 2>/dev/null || true
+  if [ "$code" = "0" ]; then
+    echo "### DEPLOY-FINISHED: deploy_ci.sh завершился успешно (exit 0) ###"
+  else
+    echo "### DEPLOY-FAILED: deploy_ci.sh завершился с ошибкой (exit $code) ###"
+  fi
+}
+trap deploy_exit_marker EXIT
+
 echo ""
 echo "===== deploy_ci.sh — $(date '+%Y-%m-%d %H:%M:%S') ====="
 
 # --- 1. CI-переменные ---
-# Бандл: из DEPLOY_BUNDLE (CI) или из файла ./.ci-bundle (локальный тест-запуск).
-if [ -z "${DEPLOY_BUNDLE:-}" ] && [ -f "$ROOT/.ci-bundle" ]; then
-  echo "→ DEPLOY_BUNDLE не задан — читаю бандл из ./.ci-bundle"
-  DEPLOY_BUNDLE="$(tr -d '[:space:]' < "$ROOT/.ci-bundle")"
-fi
-: "${DEPLOY_BUNDLE:?✗ DEPLOY_BUNDLE не задан и ./.ci-bundle не найден — положи бандл в CI/CD Variables (DEPLOY_BUNDLE_TEST / DEPLOY_BUNDLE_PRODUCTION) или сформируй: scripts/make_deploy_bundle.sh <id_rsa> <.env> > .ci-bundle}"
+: "${DEPLOY_ENV:?✗ DEPLOY_ENV не задан (test|production) — какое .envs/<env> использовать}"
+[ -d "$ROOT/.envs/$DEPLOY_ENV" ] || { echo "✗ Нет окружения .envs/$DEPLOY_ENV" >&2; exit 1; }
 : "${FRONTEND_IMAGE:?✗ FRONTEND_IMAGE не задан (напр. \$CI_REGISTRY_IMAGE/frontend:<sha>)}"
 : "${BACKEND_IMAGE:?✗ BACKEND_IMAGE не задан (напр. \$CI_REGISTRY_IMAGE/backend:<sha>)}"
 
@@ -92,26 +92,77 @@ if ! command -v ssh >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
   fi
 fi
 
-# --- 2. Распаковка бандла (SSH-ключ + .env) ---
+# --- 1б. Зависимости раннера: sops и yq (binaries, официальные release-сборки) ---
+# В CI-образе (ubuntu:24.04) их нет — скачиваем в локальный bin-dir. На shell-раннере
+# (или при локальном запуске) они уже должны быть установлены (brew/apt/ручной).
+ensure_sops_yq() {
+  local TOOL_BIN="$(mktemp -d /tmp/deploy-tools.XXXXXX)"
+  export PATH="$TOOL_BIN:$PATH"
+  local OS_ARCH="$(uname -s)_$(uname -m)"
+  case "$OS_ARCH" in
+    Linux_x86_64)  local arch="linux.amd64" ;;
+    Linux_aarch64) local arch="linux.arm64" ;;
+    Darwin_x86_64) local arch="darwin.amd64" ;;
+    Darwin_arm64)  local arch="darwin.arm64" ;;
+    *) echo "✗ sops/yq: непонятная платформа '$OS_ARCH' — установи sops и yq вручную (https://github.com/getsops/sops, https://github.com/mikefarah/yq)" >&2; exit 1 ;;
+  esac
+  if ! command -v sops >/dev/null 2>&1; then
+    echo "→ Установка sops (v3.9.4)..."
+    curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.${arch}" -o "$TOOL_BIN/sops" && chmod +x "$TOOL_BIN/sops"
+  fi
+  if ! command -v yq >/dev/null 2>&1; then
+    echo "→ Установка yq (v4.47.2)..."
+    local os="${arch%%.*}"
+    local yq_arch="$(uname -m)"
+    [ "$yq_arch" = "x86_64" ] && yq_arch="amd64"
+    [ "$yq_arch" = "aarch64" ] && yq_arch="arm64"
+    curl -fsSL "https://github.com/mikefarah/yq/releases/download/v4.47.2/yq_${os}_${yq_arch}" -o "$TOOL_BIN/yq" && chmod +x "$TOOL_BIN/yq"
+  fi
+  command -v sops >/dev/null 2>&1 || { echo "✗ sops не установлен" >&2; exit 1; }
+  command -v yq >/dev/null 2>&1  || { echo "✗ yq не установлен" >&2; exit 1; }
+}
+ensure_sops_yq
+
+# --- 2. Расшифровка энвов (.envs/$DEPLOY_ENV) + временный id_rsa ---
+if [ -z "${SOPS_AGE_KEY:-}" ] && [ -z "${SOPS_AGE_KEY_FILE:-}" ]; then
+  if [ -f "$ROOT/.agekey" ]; then
+    export SOPS_AGE_KEY_FILE="$ROOT/.agekey"
+    echo "→ SOPS_AGE_KEY не задан — использую ключ из ./.agekey"
+  fi
+fi
+SECRET_ENC="$ROOT/.envs/$DEPLOY_ENV/secret.enc.yaml"
+PUBLIC_YML="$ROOT/.envs/$DEPLOY_ENV/public.yaml"
+[ -f "$SECRET_ENC" ] || { echo "✗ Нет файла $SECRET_ENC — сгенерируй (scripts/encrypt.sh $DEPLOY_ENV), см. docs/deployment.md" >&2; exit 1; }
+[ -f "$PUBLIC_YML" ] || { echo "✗ Нет файла $PUBLIC_YML" >&2; exit 1; }
+
+echo "→ Расшифровка .envs/$DEPLOY_ENV/secret.enc.yaml (sops+age)..."
+SECRET_DATA="$(sops -d --input-type yaml --output-type yaml "$SECRET_ENC")"
+
+# Мерж secret (перекрывает) + public → export UPPERCASE-ключей как переменных окружения
+MERGED="$(yq ea -o p '. as $item ireduce ({}; . * $item)' <(echo "$SECRET_DATA") <(cat "$PUBLIC_YML"))"
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  export "$line"
+done <<< "$MERGED"
+
 BUNDLE_DIR="$(mktemp -d /tmp/deploy-ci.XXXXXX)"
 chmod 700 "$BUNDLE_DIR"
-trap 'rm -rf "$BUNDLE_DIR"' EXIT
 
-echo "→ Распаковка бандла..."
-base64 -d <<<"$DEPLOY_BUNDLE" | tar -C "$BUNDLE_DIR" -xz
-[ -f "$BUNDLE_DIR/id_rsa" ] || { echo "✗ В бандле нет id_rsa" >&2; exit 1; }
-[ -f "$BUNDLE_DIR/.env" ]   || { echo "✗ В бандле нет .env" >&2; exit 1; }
+if [ -z "${DEPLOY_SSH_KEY:-}" ]; then
+  echo "✗ В secret.enc.yaml нет DEPLOY_SSH_KEY (base64 приватного ключа деплоя)" >&2
+  exit 1
+fi
+base64 -d <<<"$DEPLOY_SSH_KEY" > "$BUNDLE_DIR/id_rsa"
 chmod 600 "$BUNDLE_DIR/id_rsa"
 
-# --- 3. .env из бандла ---
-set -a; source "$BUNDLE_DIR/.env"; set +a
+# --- 3. Контракты переменных ---
 
-: "${SSH_HOST:?✗ В бандл-.env нет SSH_HOST}"
-: "${SSH_USER:?✗ В бандл-.env нет SSH_USER}"
-: "${DOMAIN:?✗ В бандл-.env нет DOMAIN}"
-: "${LETSENCRYPT_EMAIL:?✗ В бандл-.env нет LETSENCRYPT_EMAIL}"
-: "${ADMIN_PASSWORD:?✗ В бандл-.env нет ADMIN_PASSWORD}"
-: "${PROJECT_NAME:?✗ В бандл-.env нет PROJECT_NAME — укажи слаг проекта (напр. my-project-test)}"
+: "${SSH_HOST:?✗ В .envs/$DEPLOY_ENV нет SSH_HOST (public.yaml)}"
+: "${SSH_USER:?✗ В .envs/$DEPLOY_ENV нет SSH_USER (public.yaml)}"
+: "${DOMAIN:?✗ В .envs/$DEPLOY_ENV нет DOMAIN (public.yaml)}"
+: "${LETSENCRYPT_EMAIL:?✗ В .envs/$DEPLOY_ENV нет LETSENCRYPT_EMAIL (public.yaml)}"
+: "${ADMIN_PASSWORD:?✗ В .envs/$DEPLOY_ENV нет ADMIN_PASSWORD (secret.enc.yaml)}"
+: "${PROJECT_NAME:?✗ В .envs/$DEPLOY_ENV нет PROJECT_NAME (public.yaml) — укажи слаг проекта (напр. my-project-test)}"
 SSH_PORT="${SSH_PORT:-22}"
 ADMIN_LOGIN="${ADMIN_LOGIN:-admin}"
 BRAND_TITLE="${BRAND_TITLE:-VibeSetup UI}"
@@ -119,7 +170,7 @@ BRAND_FAVICON_URL="${BRAND_FAVICON_URL:-/favicon.svg}"
 PROJECT_DIR="${PROJECT_DIR:-/opt/$PROJECT_NAME}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/opt/$PROJECT_NAME.tar.gz}"
 PROXY_DIR="${PROXY_DIR:-/opt/nginx-proxy}"
-unset SSH_KEY || true   # из бандла ключ не нужен — он уже в $BUNDLE_DIR/id_rsa
+unset SSH_KEY || true   # ключ деплоя — из DEPLOY_SSH_KEY (secret.enc.yaml)
 
 echo "→ CI-деплой $DOMAIN на $SSH_USER@$SSH_HOST:$SSH_PORT (project: $PROJECT_NAME → $PROJECT_DIR)"
 

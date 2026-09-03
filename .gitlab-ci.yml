@@ -8,28 +8,28 @@
 #   backend  (Nest API)  (Dockerfile.backend, порт 3001, внутренний без VIRTUAL_HOST).
 # Деплой: docker-compose.prod.yml (frontend + backend + postgres).
 #
-# Этап deploy НЕ собирает ничего на сервере: джоба получает base64-бандл
-# окружения (SSH-ключ + .env) из CI/CD Variables, передаёт его в
+# Этап deploy НЕ собирает ничего на сервере: джоба получает ключ
+# расшифровки (SOPS_AGE_KEY_TEST / SOPS_AGE_KEY_PRODUCTION) из CI/CD
+# Variables, экспортирует SOPS_AGE_KEY и DEPLOY_ENV, после чего запускает
 # docker/deploy_ci.sh, который:
+#   — расшифровывает .envs/<env>/secret.enc.yaml (sops+age, ключи в git),
+#     мержит с .envs/<env>/public.yaml и экспортирует как env;
 #   — ставит на сервере всё с нуля (ansible → docker → nginx-proxy);
 #   — пуллит собранные образы с ВРЕМЕННЫМ токеном (CI_JOB_TOKEN);
 #   — поднимает docker-compose.prod.yml и прогоняет healthcheck.
 #
 # Требуемые CI/CD variables (Settings → CI/CD → Variables, protected+masked;
-# по ОДНОЙ на окружение):
-#   DEPLOY_BUNDLE_TEST        — base64-бандл для тест-сервера;
-#   DEPLOY_BUNDLE_PRODUCTION  — base64-бандл для прод-сервера.
+# по ОДНОЙ age-ключу на окружение — содержимое приватного ключа, вторая строка
+# файла .agekey; сама пара генерируется через age-keygen, см. docs/deployment.md):
+#   SOPS_AGE_KEY_TEST        — age-ключ стенда test;
+#   SOPS_AGE_KEY_PRODUCTION  — age-ключ стенда production.
 #
-#   Бандл = base64( tar.gz[ id_rsa, .env ] ) — формируется скриптом
-#   scripts/make_deploy_bundle.sh <id_rsa> <.env>:
-#     id_rsa — приватный SSH-ключ БЕЗ passphrase;
-#     .env   — SSH_HOST, SSH_USER, DOMAIN, LETSENCRYPT_EMAIL, ADMIN_PASSWORD,
-#              PROJECT_NAME (обязательные); SSH_PORT, PROJECT_DIR, PROXY_DIR,
-#              BRAND_*, ADMIN_LOGIN (опциональные). SSH_KEY не нужен — ключ
-#              из бандла.
+# Секреты окружений (пароли, base64 SSH-ключа деплоя) хранятся ЗАШИФРОВАННЫМИ
+# в git: .envs/<env>/secret.enc.yaml (цикл encrypt/decrypt — scripts/encrypt.sh,
+# scripts/decrypt.sh).
 #
 # Ветка master (default) → build → авто-деплой в test И production.
-# Если бандл-переменная окружения не задана — деплой-джоба ПРОПУСКАЕТСЯ
+# Если age-ключ не задан — деплой-джоба ПРОПУСКАЕТСЯ
 # (warning в консоли, пайплайн зелёный, ошибок нет).
 #
 # Опциональные CI/CD variables:
@@ -87,10 +87,11 @@ build:docker:
 # =============================================
 # Deploy — CI-деплой из Registry (без сборки на сервере)
 # =============================================
-# Джоба декодирует бандл окружения (DEPLOY_BUNDLE_<ENV>) и запускает
-# docker/deploy_ci.sh: он ставит ansible/docker/nginx-proxy на пустом сервере,
-# пуллит образы с временным токеном (CI_JOB_TOKEN) и поднимает compose.
-# ВНИМАНИЕ: бандл-переменные задаются в Settings → CI/CD → Variables
+# Джоба передаёт SOPS_AGE_KEY_<ENV> и DEPLOY_ENV в docker/deploy_ci.sh:
+# он расшифровывает энвы окружения (.envs/<env>/), ставит ansible/docker/
+# nginx-proxy на пустом сервере, пуллит образы с временным токеном
+# (CI_JOB_TOKEN) и поднимает compose.
+# ВНИМАНИЕ: age-ключи задаются в Settings → CI/CD → Variables
 # (protected + masked) — НЕ хардкодим их здесь.
 
 .base_deploy_ci:
@@ -110,15 +111,15 @@ deploy:test:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
-    # Бандл не задан → деплой ПРОПУСКАЕТСЯ (джоба зелёная), а не падает.
+    # Age-ключ не задан → деплой ПРОПУСКАЕТСЯ (джоба зелёная), а не падает.
     - |
-      if [ -z "${DEPLOY_BUNDLE_TEST:-}" ]; then
-        echo "⚠  DEPLOY_BUNDLE_TEST не задан — деплой в окружение 'test' ПРОПУЩЕН."
-        echo "   Чтобы включить: Settings → CI/CD → Variables → DEPLOY_BUNDLE_TEST (protected+masked)."
-        echo "   Бандл: scripts/make_deploy_bundle.sh <id_rsa> <.env>"
+      if [ -z "${SOPS_AGE_KEY_TEST:-}" ]; then
+        echo "⚠  SOPS_AGE_KEY_TEST не задан — деплой в окружение 'test' ПРОПУЩЕН."
+        echo "   Чтобы включить: Settings → CI/CD → Variables → SOPS_AGE_KEY_TEST (protected+masked)."
         exit 0
       fi
-      export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_TEST"
+      export SOPS_AGE_KEY="$SOPS_AGE_KEY_TEST"
+      export DEPLOY_ENV=test
       # Деплой строго по тегу = хеш текущего коммита (не latest, не ветка):
       # распаковывается ровно та сборка, которую сделал build:docker этого коммита.
       export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"
@@ -135,13 +136,14 @@ deploy:production:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - |
-      if [ -z "${DEPLOY_BUNDLE_PRODUCTION:-}" ]; then
-        echo "⚠ DEPLOY_BUNDLE_PRODUCTION не задан — деплой в окружение 'production' ПРОПУЩЕН."
+      if [ -z "${SOPS_AGE_KEY_PRODUCTION:-}" ]; then
+        echo "⚠ SOPS_AGE_KEY_PRODUCTION не задан — деплой в окружение 'production' ПРОПУЩЕН."
         echo "   Заведи переменную в Settings → CI/CD → Variables (protected+masked):"
-        echo "   scripts/make_deploy_bundle.sh <id_rsa> <.env>  →  в DEPLOY_BUNDLE_PRODUCTION"
+        echo "   SOPS_AGE_KEY_PRODUCTION = содержимое приватного age-ключа прод-стенда"
         exit 0
       fi
-      export DEPLOY_BUNDLE="$DEPLOY_BUNDLE_PRODUCTION"
+      export SOPS_AGE_KEY="$SOPS_AGE_KEY_PRODUCTION"
+      export DEPLOY_ENV=production
       # Деплой строго по тегу = хеш текущего коммита (не latest, не ветка):
       # распаковывается ровно та сборка, которую сделал build:docker этого коммита.
       export FRONTEND_IMAGE="$FRONTEND_IMAGE_SHA"

@@ -10,7 +10,9 @@
 
 
 # Build outputs
-# CI-деплой: локальный бандл (SSH-ключ + .env) — НИКОГДА не коммитить
+# CI-деплой: приватный age-ключ и открытые секреты энвов — НИКОГДА не коммитить
+.agekey
+.envs/*/secret.yaml
 # Coverage
 # Database
 # Dependencies
@@ -34,9 +36,7 @@
 .idea/
 .vscode/
 /.ai/
-/.ci-bundle
 /.env
-/scripts/decoded-bundle/
 Thumbs.db
 apps/backend/dist/
 apps/backend/notifications-test/

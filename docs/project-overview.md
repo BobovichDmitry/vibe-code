@@ -42,7 +42,7 @@ project/
 │       └── plugins/       # theme.server / theme.client (SSR-safe тема, без FOUC)
 ├── e2e/                  # Playwright e2e tests (CDP)
 ├── docker/               # Dockerfile.frontend + Dockerfile.backend + compose
-├── scripts/              # Helpers: log-runner, kill-service
+├── scripts/              # Helpers: log-runner, kill-service, encrypt/decrypt (SOPS+age секреты .envs/)
 └── package.json          # Root workspace
 ```
 

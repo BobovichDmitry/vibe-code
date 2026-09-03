@@ -80,7 +80,12 @@ vibe-setup-ui/
 │       └── e2e-testing-structure.md
 ├── scripts/
 │   ├── log-runner.mjs       # Runs service with logging to logs/<name>.log
-│   └── kill-service.mjs     # Kills service by PID file
+│   ├── kill-service.mjs     # Kills service by PID file
+│   ├── encrypt.sh <env>     # Шифрует .envs/<env>/secret.yaml → secret.enc.yaml (SOPS+age)
+│   └── decrypt.sh <env>     # Расшифровывает .envs/<env>/secret.enc.yaml → secret.yaml
+├── .envs/
+│   ├── test/                # public.yaml + secret.enc.yaml (SOPS+age), secret.yaml gitignored
+│   └── production/          # то же для прода
 ├── deploy.sh               # Локальный деплой (env-driven, PROJECT_NAME обязателен)
 ├── package.json             # Root workspace, all scripts
 └── agents.md                # ← This file
@@ -110,6 +115,7 @@ When debugging a problem, read the logs instead:
 - `logs/frontend.log` — current frontend log
 - `logs/deploy.log` — deployment log (`./deploy.sh`, manual deploy)
 - `logs/deploy-ci.log` — deployment log (`docker/deploy_ci.sh`, CI deploy)
+- Both deploy scripts end with a marker line in stdout AND in the log file: `### DEPLOY-FINISHED: ... (exit 0) ###` (success) or `### DEPLOY-FAILED: ... (exit N) ###` (failure). To check whether a deploy has finished: `grep -E 'DEPLOY-(FINISHED|FAILED)' logs/deploy.log | tail -1`
 - `logs/backend.pid` / `logs/frontend.pid` — process IDs (if present, the service is running)
 
 ### Build & Prod

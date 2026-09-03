@@ -16,7 +16,7 @@
 | `areas/e2e-testing-structure.md` | E2E-тесты | Playwright, CDP, новые тесты |
 | `areas/admin-panel.md` | Админ-панель | AdminLayout, роуты, навигация |
 | `testing-guide.md` | Руководство по тестированию | Запуск тестов, написание |
-| `deployment.md` | Docker, порты, env | Деплой |
+| `deployment.md` | Docker, порты, env | Деплой: deploy.sh, GitLab CI (build → deploy:test/production), секреты SOPS+age (.envs/, encrypt/decrypt) |
 
 ## Субагенты
 

@@ -1,0 +1,15 @@
+# Несекретные переменные окружения test-стенда (деплой).
+# Мёржатся с secret.enc.yaml в docker/deploy_ci.sh (secret перекрывает public).
+# Ключи — ВЕРХНИМ регистром: они экспортируются как переменные окружения.
+SSH_HOST: 1.2.3.4
+SSH_USER: root
+SSH_PORT: 22
+DOMAIN: example.test
+LETSENCRYPT_EMAIL: admin@example.test
+PROJECT_NAME: my-project-test
+# опционально (значения по умолчанию — см. docker/deploy_ci.sh):
+# PROJECT_DIR: /opt/my-project-test
+# PROXY_DIR: /opt/nginx-proxy
+BRAND_TITLE: VibeSetup UI
+BRAND_FAVICON_URL: /favicon.svg
+ADMIN_LOGIN: admin

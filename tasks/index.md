@@ -4,6 +4,7 @@
 
 ## Todo
 <!-- задачи в очереди — сверху вниз, нумерация сохраняет порядок -->
+<!-- (пусто) -->
 
 ## NeedInfo
 <!-- задачи, ожидающие ответа. Вопросы — внутри файла (и в корневом questions.md) -->
@@ -13,6 +14,7 @@
 
 ## Done
 <!-- выполненные задачи. Файл перенесён в done/, детали — внутри файла -->
+- [sops_encrypted_envs.md](done/sops_encrypted_envs.md) — SOPS+age: секреты деплоя зашифрованы в git (`.envs/<env>/public.yaml` + `secret.enc.yaml`, DEPLOY_SSH_KEY из base64), в GitLab Variables только per-стенд age-ключи `SOPS_AGE_KEY_TEST`/`_PRODUCTION`; `deploy_ci.sh` расшифровывает через sops+yq (авто-установка в CI); удалены make_deploy_bundle.sh/decode-bundle.sh/.ci-bundle (2026-09-09)
 - [ci_two_stage_deploy.md](done/ci_two_stage_deploy.md) — CI-деплой в 2 этапа: build (Registry) → deploy через `docker/deploy_ci.sh` (base64-бандл на окружение `DEPLOY_BUNDLE_*`: SSH-ключ + .env; pull образов с CI_JOB_TOKEN, без сборки на сервере; подготовка пустого сервера ansible-ом; автодеплой test+production на master; локальный тест через `./.ci-bundle`) (2026-09-05)
 - [ssr_and_portable_deploy.md](done/ssr_and_portable_deploy.md) — миграция frontend на Nuxt 3 (SSR, history-роутинг, cookie-auth) + разделение на два сервиса (Nuxt:3000 edge, Nest:3001 API) + портируемый деплой (deploy.sh/ansible/Dockerfile без форк-специфичных хардкодов) + гайд миграции в docs (2026-08-27)
 - [s3_file_service.md](done/s3_file_service.md) — подключить S3 на v3 SDK: модуль `files/` (FileService upload/delete/stream/download/presigned get+put + FileEntity + контроллер /api/files), без ресайза (2025-01-27)

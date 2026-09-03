@@ -198,7 +198,7 @@ project/
 ├── e2e/                  # Playwright e2e tests (CDP)
 ├── docker/               # Dockerfile.frontend + Dockerfile.backend + compose
 ├── docs/                 # Документация
-├── scripts/              # log-runner, kill-service
+├── scripts/              # log-runner, kill-service; encrypt.sh/decrypt.sh (SOPS+age секреты .envs/)
 ├── package.json          # Root workspace
 └── agents.md             # Agent guide
 ```
