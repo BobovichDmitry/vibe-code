@@ -104,6 +104,7 @@ S3-совместимое хранилище для локальной разр�
 | `ADMIN_LOGIN` | `admin` | First admin (empty DB only) |
 | `ADMIN_PASSWORD` | (required) | First admin password |
 | `BRAND_TITLE` | `VibeSetup UI` | Брендинг (публичный) |
+| `BRAND_SUBTITLE` | (пусто) | Подзаголовок под названием в хедере (не рендерится, если не задан) |
 | `BRAND_FAVICON_URL` | `/favicon.svg` | Favicon URL |
 | `VIRTUAL_HOST` | `<domain>` | nginx-proxy host (frontend) |
 | `LETSENCRYPT_HOST` | `<domain>` | Let's Encrypt host |

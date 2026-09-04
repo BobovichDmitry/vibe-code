@@ -9,7 +9,7 @@ import ThemeToggle from '~/components/ThemeToggle.vue';
  * /admin/** использует layouts/admin.vue (свой сайдбар) — этот хедер там не нужен.
  */
 const { isAuthenticated, logout } = useAuth();
-const { title } = useBranding();
+const { title, subtitle } = useBranding();
 </script>
 
 <template>
@@ -27,7 +27,9 @@ const { title } = useBranding();
           </span>
           <span>
             <span class="block text-lg font-semibold text-slate-950 dark:text-white">{{ title }}</span>
-            <span class="block text-sm text-slate-500 dark:text-slate-400">Шаблоны приложения</span>
+            <!-- Подзаголовок опционален (env BRAND_SUBTITLE): пустой по умолчанию,
+                 не рендерится вовсе — никакого хардкода от сетапа. -->
+            <span v-if="subtitle" class="block text-sm text-slate-500 dark:text-slate-400">{{ subtitle }}</span>
           </span>
         </button>
 

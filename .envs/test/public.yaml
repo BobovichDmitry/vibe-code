@@ -16,6 +16,8 @@ PROJECT_NAME: my-project-test
 # PROJECT_DIR: /opt/my-project-test
 # PROXY_DIR: /opt/nginx-proxy
 BRAND_TITLE: VibeSetup UI
+# Подзаголовок под названием в хедере (пустой по умолчанию — не рендерится)
+#BRAND_SUBTITLE: ""
 BRAND_FAVICON_URL: /favicon.svg
 ADMIN_LOGIN: admin
 

@@ -139,6 +139,57 @@ When debugging a problem, read the logs instead:
 | `npm run migration:revert` | Откатить последнюю миграцию |
 | `npm run migration:generate -- src/migrations/Name` | Сгенерировать миграцию из diff |
 
+### Ручной деплой с локальной машины (без CI) — `deploy_local.sh`
+
+Полный цикл деплоя на прод **с этой машины**, минуя GitLab CI. Для отладки деплоймента — не жди раннеров:
+
+```bash
+# Стандартный запуск (production, образы :<sha HEAD> из Registry):
+CI_JOB_TOKEN=glpat-... bash deploy_local.sh
+
+# Образы конкретной ревизии (когда CI выключен и HEAD не собран):
+CI_JOB_TOKEN=glpat-... IMAGE_SHA=83d513bb bash deploy_local.sh
+
+# Явные теги образов / тест-стенд / без docker login:
+FRONTEND_IMAGE=... BACKEND_IMAGE=... bash deploy_local.sh
+DEPLOY_ENV=test bash deploy_local.sh
+DEPLOY_SKIP_LOGIN=1 bash deploy_local.sh
+```
+
+Требуется: `./.agekey` (age-ключ стенда, gitignored) + PAT с `read_registry` в `CI_JOB_TOKEN`.
+Поток: расшифровка `.envs/<env>/secret.enc.yaml` → архив исходников → SSH → ansible →
+`docker/deploy_0downtime.sh --pull` (blue-green переключение). Лог: `logs/deploy-local-run.log` (или задай свой через tee).
+
+**Что происходит на сервере** (см. `docs/areas/blue-green-deploy.md`): поднимается standby-слот
+(frontend+backend парой) → healthcheck `/api/health` → edge-nginx переключает upstream (`nginx -s reload`)
+→ верификация → останов старого слота. Состояние — `<project>/docker/.active-slot`. При ошибке — откат
+upstream на живой слот (`✗ ... / Rollback` в выводе).
+
+**Отладка деплоя на сервере** (SSH: `root@31.77.193.104`, профиль `default` в ssh-connect MCP):
+
+```bash
+cd /opt/gmoreva-setup/docker
+cat .active-slot                                  # активный слот (blue/green)
+docker ps --format 'table {{.Names}}\t{{.Status}}' # слоты + health
+grep server nginx/runtime/upstream-frontend.conf  # куда смотрит edge-nginx
+docker compose -p gmoreva-setup -f docker-compose.prod.yml logs edge-nginx
+docker compose -p gmoreva-setup -f docker-compose.prod.yml logs backend-blue
+curl -k https://big-vibe.hopto.org/api/health     # сквозная проверка
+```
+
+**Грабли, уже собранные (не повторять):**
+1. **Bind-mount каталогов, НЕ файлов** (nginx conf/runtime): tar-распаковка архива пересоздаёт
+   файлы (новый inode) — file-mount остаётся на старом inode, nginx видит устаревший upstream.
+2. **Healthcheck 127.0.0.1, НЕ localhost**: в alpine `localhost` резолвится в `::1`, Nitro/node
+   слушают только IPv4 → контейнер вечно unhealthy.
+3. **Nginx map `'' → ''`** (НЕ close) при keepalive-пуле: `Connection: close` + keepalive = мёртвые
+   сокеты в пуле → чередование 200/400 Bad Request.
+4. **Bootstrap**: upstream-файл из репо указывает на frontend-blue — при bootstrap поднимается
+   standby; писать upstream в реально поднимаемый слот ДО старта edge-nginx (+ `--force-recreate`).
+5. **CI выключен** (`workflow: when: never` в `.gitlab-ci.yml`) — образы не собираются на пуш.
+   Для ручного деплоя указывай готовый `IMAGE_SHA` (последняя собранная ревизия) или собери образы
+   вручную и запушь в Registry.
+
 ## Environment Variables
 
 ### Backend (`apps/backend/.env`)

@@ -14,5 +14,7 @@ DOMAIN: big-vibe.hopto.org
 LETSENCRYPT_EMAIL: admin@big-vibe.hopto.org
 PROJECT_NAME: gmoreva-setup
 BRAND_TITLE: Вайбкодинг от Галеры Морева
+# Подзаголовок под названием в хедере (пустой по умолчанию — не рендерится)
+#BRAND_SUBTITLE: ""
 BRAND_FAVICON_URL: /favicon.svg
 ADMIN_LOGIN: admin
