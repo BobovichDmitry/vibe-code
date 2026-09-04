@@ -331,12 +331,18 @@ yml_str() {
   s="${s//\"/\\\"}"
   printf '%s: "%s"\n' "$1" "$s"
 }
-cat >> ansible/vars.yml <<YML
+if [ -n "${EXTRA_ENV_KEYS:-}" ]; then
+  cat >> ansible/vars.yml <<YML
 extra_env:
 YML
-for _v in ${EXTRA_ENV_KEYS:-}; do
-  yml_str "$_v" "${!_v:-}" | sed 's/^/  /' >> ansible/vars.yml
-done
+  for _v in ${EXTRA_ENV_KEYS:-}; do
+    yml_str "$_v" "${!_v:-}" | sed 's/^/  /' >> ansible/vars.yml
+  done
+else
+  # пустой extra_env: {} (НЕ null — иначе env.j2 падает на .items())
+  printf 'extra_env: {}
+' >> ansible/vars.yml
+fi
 cat .app.secrets >> ansible/vars.yml
 chmod 600 ansible/vars.yml
 

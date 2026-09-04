@@ -128,8 +128,11 @@ echo "→ Новый слот:     $STANDBY_SLOT (режим: $MODE)"
 set +e
 fail_deploy() {
   echo "✗ $1" >&2
-  echo "→ Rollback: возвращаю upstream на активный слот $ACTIVE_SLOT"
-  write_upstream "$ACTIVE_SLOT"
+  # Rollback: возвращаем upstream на работающий слот. На bootstrap 'активного'
+  # слота нет (blue не поднимался) — пишем standby, который реально жив.
+  if [ "$BOOTSTRAP" = "1" ]; then ROLLBACK_SLOT="$STANDBY_SLOT"; else ROLLBACK_SLOT="$ACTIVE_SLOT"; fi
+  echo "→ Rollback: возвращаю upstream на слот $ROLLBACK_SLOT" >&2
+  write_upstream "$ROLLBACK_SLOT"
   $COMPOSE exec -T edge-nginx nginx -t >/dev/null 2>&1 && \
     $COMPOSE exec -T edge-nginx nginx -s reload >/dev/null 2>&1 || true
   DURATION_MIN=$(( ($(date +%s) - START_TS) / 60 ))
@@ -181,17 +184,34 @@ $COMPOSE up -d "backend-$STANDBY_SLOT" "frontend-$STANDBY_SLOT" || fail_deploy "
 wait_health "backend-$STANDBY_SLOT" || fail_deploy "backend-$STANDBY_SLOT не прошёл healthcheck"
 wait_health "frontend-$STANDBY_SLOT" || fail_deploy "frontend-$STANDBY_SLOT не прошёл healthcheck"
 
-# --- 3б. edge-nginx — ПОСЛЕ standby-слота: nginx резолвит upstream-хосты
-# при старте, без поднятого frontend-<slot> он не стартует. На последующих
-# деплоях up -d идемпотентен (контейнер уже работает).
-echo "→ Edge-nginx (up -d)..."
-$COMPOSE up -d edge-nginx || fail_deploy "Не поднялся edge-nginx"
-
 # --- 4. Переключение upstream (без простоя) ---
-echo "→ Переключаю upstream edge-nginx на слот $STANDBY_SLOT..."
-write_upstream "$STANDBY_SLOT"
-$COMPOSE exec -T edge-nginx nginx -t >/dev/null 2>&1 || fail_deploy "nginx -t упал после переключения upstream"
-$COMPOSE exec -T edge-nginx nginx -s reload >/dev/null 2>&1 || fail_deploy "nginx -s reload упал после переключения upstream"
+if [ "$BOOTSTRAP" = "1" ]; then
+  # Bootstrap: upstream-файл из репо указывает на blue, а blue может быть не
+  # поднят — edge-nginx стартовал бы с нерезолвящимся upstream и ушёл в
+  # рестарт-луп. Переключаем upstream на реально поднимаемый слот ДО старта edge.
+  echo "→ Bootstrap: upstream → слот $STANDBY_SLOT (до старта edge-nginx)..."
+  write_upstream "$STANDBY_SLOT"
+  echo "→ Edge-nginx (первый старт, --force-recreate: контейнер может остаться
+     в рестарт-лупе после неудачного bootstrap, up -d его не пересоздаёт)..."
+  $COMPOSE up -d --force-recreate edge-nginx || fail_deploy "Не поднялся edge-nginx (bootstrap)"
+else
+  # Обычный деплой: edge уже работает на активном слоте — просто переключаем.
+  echo "→ Переключаю upstream edge-nginx на слот $STANDBY_SLOT..."
+  write_upstream "$STANDBY_SLOT"
+fi
+# exec может попасть в рестарт-луп контейнера (bootstrap): ретраи.
+NGINX_T_OK=0
+for _try in 1 2 3 4 5 6 7 8 9 10; do
+  if $COMPOSE exec -T edge-nginx nginx -t >/dev/null 2>&1; then NGINX_T_OK=1; break; fi
+  sleep 2
+done
+[ "$NGINX_T_OK" = "1" ] || fail_deploy "nginx -t упал после переключения upstream"
+NGINX_RELOAD_OK=0
+for _try in 1 2 3 4 5 6; do
+  if $COMPOSE exec -T edge-nginx nginx -s reload >/dev/null 2>&1; then NGINX_RELOAD_OK=1; break; fi
+  sleep 5
+done
+[ "$NGINX_RELOAD_OK" = "1" ] || fail_deploy "nginx -s reload упал после переключения upstream"
 
 # --- 5. Верификация полного пути edge-nginx → frontend → backend ---
 for i in $(seq 1 10); do
