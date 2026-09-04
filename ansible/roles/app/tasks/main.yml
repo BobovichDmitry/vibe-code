@@ -72,13 +72,13 @@
 # vars.yml/.app.secrets НЕ меняет роль в persistent volume. Idempotent-но
 # подтягиваем пароль роли ДО старта нового слота.
 - name: Синхронизировать пароль роли PostgreSQL с db_password (idempotent)
-  # psql :'pw' — переменная psql с автоматическим SQL-экранированием:
-  # не нужно дублировать кавычки в Jinja (парсер ansible 2.16 падает на
-  # heredoc + regex_replace с кавычками).
+  # psql :'pw' — переменная с SQL-экранированием; интерполяция работает ТОЛЬКО
+  # в stdin-скриптах (не в -c), поэтому SQL подаётся через echo | psql.
+  # Без heredoc/regex_replace — они ломают парсер задач ansible 2.16.
   ansible.builtin.shell: >-
+    echo "ALTER USER \"{{ db_username }}\" WITH PASSWORD :'pw';" |
     docker compose -p {{ project_name }} -f {{ prod_compose_file }} exec -T postgres
     psql -U {{ db_username }} -d {{ db_name }} -v pw={{ db_password | quote }}
-    -c "ALTER USER \"{{ db_username }}\" WITH PASSWORD :'pw';"
   args:
     chdir: "{{ project_dir }}/docker"
   register: db_password_sync
