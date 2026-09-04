@@ -33,10 +33,14 @@ services:
     image: nginx:1.27-alpine
     restart: unless-stopped
     volumes:
-      - ./nginx/conf.d/edge.conf:/etc/nginx/conf.d/default.conf:ro
-      # runtime-файл: скрипт деплоя переписывает его на сервере и делает
-      # `nginx -s reload` — переключение слота без разрыва соединений.
-      - ./nginx/runtime/upstream-frontend.conf:/etc/nginx/runtime/upstream-frontend.conf:ro
+      # Монтируем КАТАЛОГИ, не отдельные файлы: tar-распаковка архива при деплое
+      # пересоздаёт файлы (новый inode), а file-bind-mount остаётся прикован к
+      # старому inode — nginx видел бы устаревший upstream (502 после остановки
+      # старого слота). Каталог всегда показывает актуальные файлы.
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # runtime-каталог: скрипт деплоя переписывает upstream-frontend.conf и
+      # делает `nginx -s reload` — переключение слота без разрыва соединений.
+      - ./nginx/runtime:/etc/nginx/runtime:ro
     expose:
       - 80
     environment:

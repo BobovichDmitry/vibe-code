@@ -195,7 +195,10 @@ if [ "$BOOTSTRAP" = "1" ]; then
      в рестарт-лупе после неудачного bootstrap, up -d его не пересоздаёт)..."
   $COMPOSE up -d --force-recreate edge-nginx || fail_deploy "Не поднялся edge-nginx (bootstrap)"
 else
-  # Обычный деплой: edge уже работает на активном слоте — просто переключаем.
+  # Обычный деплой: edge уже работает на активном слоте. up -d идемпотентен
+  # (пересоздаёт ТОЛЬКО при изменении конфига compose, напр. volumes).
+  echo "→ Edge-nginx (up -d, идемпотентно)..."
+  $COMPOSE up -d edge-nginx || fail_deploy "Не поднялся edge-nginx"
   echo "→ Переключаю upstream edge-nginx на слот $STANDBY_SLOT..."
   write_upstream "$STANDBY_SLOT"
 fi
