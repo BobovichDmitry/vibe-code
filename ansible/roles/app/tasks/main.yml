@@ -1,5 +1,11 @@
 # =============================================================================
-# Роль app: распаковка архива, генерация env, build/up приложения (frontend + backend)
+# Роль app: распаковка архива, генерация env, деплой 0downtime (blue-green).
+#
+# Логика blue-green переключения целиком в docker/deploy_0downtime.sh
+# (build/pull standby-слота → healthcheck → переключение upstream edge-nginx
+# → верификация → останов старого слота + rollback при ошибке).
+# Роль только готовит окружение: env, образы в docker/.env, postgres,
+# синхронизация пароля БД — и запускает скрипт деплоя.
 # =============================================================================
 
 - name: Создать project_dir
@@ -31,7 +37,7 @@
     mode: "0600"
 
 # --- CI-режим (Registry): frontend_image/backend_image переданы через -e —
-# образы уже собраны в GitLab CI, сервер их только пуллит (без build).
+# образы уже собраны в GitLab CI, скрипт деплоя делает pull (--pull).
 - name: Прокинуть Registry-образы в docker/.env (CI-режим)
   ansible.builtin.lineinfile:
     path: "{{ project_dir }}/docker/.env"
@@ -41,35 +47,14 @@
     - { key: BACKEND_IMAGE, value: "{{ backend_image }}" }
   when: frontend_image is defined and backend_image is defined
 
-- name: Pull frontend+backend из Registry (CI-режим, без сборки на сервере)
-  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} pull frontend backend
+# --- Postgres поднимаем ДО запуска слотов: backend нового слота стартует
+# с корректным паролем роли, restart после синхронизации не нужен.
+- name: Поднять postgres (общий для обоих слотов)
+  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} up -d postgres
   args:
     chdir: "{{ project_dir }}/docker"
-  register: app_pull
   changed_when: false
-  when: frontend_image is defined and backend_image is defined
 
-# --- Ручной режим (deploy.sh): build из исходников на сервере ---
-- name: Собрать frontend+backend (docker compose build)
-  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} build
-  args:
-    chdir: "{{ project_dir }}/docker"
-  register: app_build
-  changed_when: "'SUCCESSFULLY' in app_build.stderr or 'naming to' in app_build.stderr"
-  when: frontend_image is not defined or backend_image is not defined
-
-- name: Поднять frontend+backend+postgres (docker compose up -d)
-  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} up -d
-  args:
-    chdir: "{{ project_dir }}/docker"
-  register: app_up
-  changed_when: "'Started' in app_up.stderr or 'Creating' in app_up.stderr"
-
-# --- Синхронизация db_password (28P01): PostgreSQL-роль создаётся при первом
-# запуске контейнера с паролем из POSTGRES_PASSWORD. Смена db_password в
-# vars.yml/.app.secrets НЕ меняет роль в persistent volume — backend получает
-# 28P01 и не поднимается. Поэтому: дожидаемся готовности PG, idempotent-но
-# подтягиваем пароль роли и перезапускаем backend.
 - name: Дождаться готовности PostgreSQL (pg_isready)
   ansible.builtin.command:
     docker compose -p {{ project_name }} -f {{ prod_compose_file }} exec -T postgres
@@ -82,6 +67,10 @@
   delay: 2
   changed_when: false
 
+# --- Синхронизация db_password (28P01): PostgreSQL-роль создаётся при первом
+# запуске контейнера с паролем из POSTGRES_PASSWORD. Смена db_password в
+# vars.yml/.app.secrets НЕ меняет роль в persistent volume. Idempotent-но
+# подтягиваем пароль роли ДО старта нового слота.
 - name: Синхронизировать пароль роли PostgreSQL с db_password (idempotent)
   ansible.builtin.shell: |
     docker compose -p {{ project_name }} -f {{ prod_compose_file }} exec -T postgres \
@@ -94,16 +83,23 @@
   changed_when: false
   no_log: true
 
-- name: Перезапустить backend после синхронизации пароля БД
-  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} restart backend
+# --- Деплой 0downtime: blue-green переключение целиком в скрипте.
+- name: Деплой без простоя (CI: pull из Registry)
+  ansible.builtin.command: ./deploy_0downtime.sh {{ project_name }} --pull
   args:
     chdir: "{{ project_dir }}/docker"
-  when: db_password_sync is changed
+  when: frontend_image is defined and backend_image is defined
+  changed_when: true
+
+- name: Деплой без простоя (ручной: сборка на сервере)
+  ansible.builtin.command: ./deploy_0downtime.sh {{ project_name }} --build
+  args:
+    chdir: "{{ project_dir }}/docker"
+  when: frontend_image is not defined or backend_image is not defined
   changed_when: true
 
 - name: Вывести результат deploy
   ansible.builtin.debug:
     msg:
-      - "Registry-pull: {{ (app_pull.stderr_lines | default(['—']))[-3:] }}"
-      - "Build: {{ (app_build.stderr_lines | default(['—']))[-3:] }}"
-      - "Up: {{ (app_up.stderr_lines | default(['—']))[-3:] }}"
+      - "Активный слот и лог переключения — в docker/deploy_0downtime.sh (docker/.active-slot)."
+      - "Логи слотов: cd {{ project_dir }}/docker && docker compose -p {{ project_name }} -f {{ prod_compose_file }} logs edge-nginx"

@@ -42,6 +42,12 @@ brand_favicon_url: "/favicon.svg"
 
 # --- Let's Encrypt ---
 letsencrypt_email: "admin@example.com"
+
+# --- Production compose / CORS ---
+# Compose-файл прод-деплоя (относительно docker/)
+prod_compose_file: "docker-compose.prod.yml"
+# Origin клиента за nginx-proxy (HTTPS-домен) — для backend CORS_ORIGIN
+cors_origin: "https://{{ domain }}"
 # --- Дополнительно прокидываемые переменные окружения (generic pass-through) ---
 # Наполняется деплой-скриптами (deploy.sh / deploy_ci.sh): любая переменная
 # из .env / .envs/<env>/*.yaml (кроме базовых ключей деплоя) попадает в

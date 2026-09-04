@@ -38,9 +38,11 @@
           ansible.builtin.pause:
             seconds: 15
 
-        - name: Проверить /api/users/count внутри контейнера backend (порт 3001, наружу не проброшен)
+        - name: Проверить /api/users/count внутри контейнера edge-nginx
+          # edge-nginx — единственный контейнер с полным путём edge → frontend → backend
+          # (backend наружу не торчит, имена слотов меняются blue/green).
           ansible.builtin.command:
-            cmd: docker compose -p {{ project_name }} -f docker-compose.prod.yml exec -T backend wget -qO- http://localhost:3001/api/users/count
+            cmd: docker compose -p {{ project_name }} -f docker-compose.prod.yml exec -T edge-nginx wget -qO- http://127.0.0.1/api/users/count
             chdir: "{{ project_dir }}/docker"
           register: health_result
           changed_when: false

@@ -144,9 +144,29 @@ curl https://<domain>/api/users/count
 Повторный запуск `ansible-playbook playbook.yml` безопасен:
 - Docker не переустанавливается (apt state=present)
 - nginx-proxy не пересоздаётся (проверка существования контейнера)
-- `docker compose up -d` безопасен — поднимает только изменившиеся контейнеры
+- Деплой идёт через `docker/deploy_0downtime.sh` (blue-green, без простоя) —
+  поднимается только standby-слот, затем переключается edge-nginx upstream
 - БД (PostgreSQL volume) не пересоздаётся
 - Сертификаты Let's Encrypt не перевыпускаются (acme-companion управляет этим)
+
+## Деплой без простоя (blue-green)
+
+Роль `app` **не** делает `docker compose up -d` напрямую. Она готовит окружение:
+
+- рендер `docker/env` (в CI-режиме — `FRONTEND_IMAGE`/`BACKEND_IMAGE`);
+- поднимает postgres и ждёт готовности (`pg_isready`);
+- синхронизирует пароль роли (`ALTER USER`, idempotent) **до старта слотов** —
+  рестарт backend после синхронизации не нужен;
+
+…затем вызывает `docker/deploy_0downtime.sh <project_name> --pull` (CI)
+или `--build` (ручной `deploy.sh`). Скрипт поднимает standby-слот
+(frontend-blue/backend-blue или frontend-green/backend-green), проверяет
+healthcheck'и, переключает upstream edge-nginx (`nginx -t` + reload) и
+останавливает старый слот. Подробности — `docs/deployment.md`.
+
+В `group_vars/all.yml` определены `prod_compose_file: "docker-compose.prod.yml"`
+и `cors_origin: "https://{{ domain }}"`. Healthcheck в playbook.yml выполняется
+через edge-nginx: `docker compose exec -T edge-nginx wget -qO- http://127.0.0.1/api/users/count`.
 
 ## Структура ansible/
 
@@ -160,7 +180,7 @@ ansible/
   roles/
     docker/                # Установка Docker + compose-plugin
     nginx_proxy/           # Поднятие общего nginx-proxy + acme-companion
-    app/                   # Распаковка, env, build/up
+    app/                   # Распаковка, env, postgres, вызов docker/deploy_0downtime.sh
   templates/
     env.j2                 # Шаблон docker/env (прод-env)
     compose-proxy.yml.j2   # docker-compose для nginx-proxy + acme

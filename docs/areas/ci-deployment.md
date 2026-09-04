@@ -122,8 +122,9 @@ BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
    живёт только в рамках джобы), после деплоя — `docker logout`.
 5. Запускает `ansible-playbook` с extra vars `frontend_image`/`backend_image` →
    роль `app` в **Registry-режиме**: прокидывает `FRONTEND_IMAGE`/`BACKEND_IMAGE`
-   (теги по SHA) в `docker/.env` и делает `docker compose pull frontend backend`
-   вместо build. Без этих vars — старый build-режим (ручной `deploy.sh` не менялся).
+   (теги по SHA) в `docker/.env` и делает `docker compose pull` для слотов (роль
+   не делает `up -d` — деплой выполняет `docker/deploy_0downtime.sh --pull`).
+   Без этих vars — старый build-режим (ручной `deploy.sh` не менялся).
 6. Healthcheck: `https://$DOMAIN/api/users/count` → 200.
 
 ## Требования и ограничения CI-деплоя

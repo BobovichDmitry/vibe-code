@@ -17,6 +17,7 @@ vibe-setup-ui/
 │   │   │   │   ├── auth.service.ts
 │   │   │   │   ├── jwt.strategy.ts       # Bearer + cookie extractors
 │   │   │   │   └── jwt-auth.guard.ts     # Bearer + cookie extractors
+│   │   │   ├── health/                 # GET /api/health (public healthcheck)
 │   │   │   ├── files/                  # Files in S3 (presigned-URL, upload)
 │   │   │   │   ├── entities/file.entity.ts
 │   │   │   │   ├── file.service.ts
@@ -50,16 +51,18 @@ vibe-setup-ui/
 │   ├── Dockerfile.frontend # Nuxt build → Nitro server (порт 3000)
 │   ├── Dockerfile.backend  # Nest build (порт 3001)
 │   ├── docker-compose.yml   # Dev: frontend + backend + postgres (порты проброшены)
-│   ├── docker-compose.prod.yml  # Prod: frontend (VIRTUAL_HOST) + backend (internal) + postgres
+│   ├── nginx/                   # edge-nginx: conf.d/edge.conf + runtime/upstream-frontend.conf
+│   ├── deploy_0downtime.sh      # Blue-green деплой без простоя (активный слот в .active-slot, gitignored)
+│   ├── docker-compose.prod.yml  # Prod blue-green: edge-nginx + слоты frontend/backend blue/green + postgres
 │   ├── docker-compose.e2e.yml  # E2E tests with Playwright UI (:8080)
 │   ├── docker-compose.nginx-proxy.yml  # Legacy variant
 │   └── env                  # Production env template (backend + compose-интерполяция)
 ├── ansible/                # Ansible-деплой (запуск НА сервере)
 │   ├── ansible.cfg          # inventory, host_key_checking=False
 │   ├── inventory.ini        # localhost, ansible_connection=local
-│   ├── group_vars/all.yml   # Переменные (плейсхолдеры/выводимые из project_name)
+│   ├── group_vars/all.yml   # Переменные (плейсхолдеры/выводимые из project_name; prod_compose_file, cors_origin)
 │   ├── vars.example.yml     # Пример заполнения переменных
-│   ├── playbook.yml         # Плейбук (tags: deps, proxy, deploy, healthcheck на backend:3001)
+│   ├── playbook.yml         # Плейбук (tags: deps, proxy, deploy, healthcheck через edge-nginx)
 │   ├── roles/               # docker, nginx_proxy, app
 │   ├── templates/           # env.j2 (PORT=3001, CORS, COOKIE_SECURE), compose-proxy.yml.j2
 │   └── README.md            # Инструкция: sftp архива + запуск на сервере
@@ -72,6 +75,7 @@ vibe-setup-ui/
 │   ├── context-index.md     # Doc index
 │   └── areas/               # Area-specific docs
 │       ├── backend-api-structure.md
+│       ├── blue-green-deploy.md    # Blue-green деплой без простоя (edge-nginx, deploy_0downtime.sh)
 │       ├── auth-structure.md
 │       ├── database-structure.md
 │       ├── frontend-structure.md   # Nuxt 3 SSR
@@ -231,6 +235,7 @@ When debugging a problem, read the logs instead:
 | PATCH | `/api/users/:id` | Update user (admin only) |
 | DELETE | `/api/users/:id` | Delete user (admin only) |
 | GET | `/api/users/count` | User count (public, no auth) |
+| GET | `/api/health` | Public healthcheck (`health/health.controller.ts`) — для compose-healthcheck'ов и деплоя |
 | GET | `/api/version` | Version + commit SHA (public, проверка деплоя) |
 
 ### Files
@@ -263,13 +268,30 @@ cd docker && docker compose -f docker-compose.e2e.yml up e2e
 ```
 
 - **`docker-compose.yml`** (dev): frontend (3000) + backend (3001) + PostgreSQL (5432 проброшен).
-- **`docker-compose.prod.yml`** (prod): frontend (VIRTUAL_HOST, 3000, reverse-proxy) +
-  backend (3001, internal, БЕЗ VIRTUAL_HOST) + PostgreSQL (5432 НЕ проброшен).
-  Nuxt проксирует `/api/**` → `http://backend:3001`. Используется ansible-плейбуком.
-  Сборка — на сервере внутри Docker (split Dockerfile'ы).
+- **`docker-compose.prod.yml`** (prod, blue-green без простоя): **edge-nginx**
+  (`nginx:1.27-alpine`, единственный `VIRTUAL_HOST` в reverse-proxy сети; конфиг
+  `docker/nginx/conf.d/edge.conf`, upstream — `docker/nginx/runtime/upstream-frontend.conf`)
+  + слоты `frontend-blue/backend-blue` и `frontend-green/backend-green`
+  (YAML-якоря `x-frontend-common`/`x-backend-common`). Изолированные сети
+  `slot_blue`/`slot_green` с одинаковыми aliases `frontend`/`backend` внутри каждой;
+  общий postgres. Healthcheck'и: backend `/api/health`, frontend `/`.
+  Обновление — `docker/deploy_0downtime.sh <project_name> --build|--pull`
+  (вызывается ansible-ролью `app`): активный слот читается из `docker/.active-slot`
+  (gitignored) → standby-слот build/pull + up + healthcheck → переключение upstream
+  (`nginx -t` + reload) → верификация `/api/health` через edge-nginx → запись состояния
+  → остановка старого слота (задержка `OLD_SLOT_STOP_DELAY`, по умолчанию 10с).
+  Ошибка → rollback upstream на активный слот. Bootstrap (нет `.active-slot`):
+  поднимается только новый слот. Telegram-нотификации при заданных `BOT_TOKEN` +
+  `TELEGRAM_NOTIFY_CHAT` (опц. `TELEGRAM_NOTIFY_TOPIC`) в `docker/env`:
+  start-сообщение → edit в итог (слот, время, результат) + реакция 👍; не заданы —
+  пропускаются молча. Сборка — на сервере внутри Docker (split Dockerfile'ы).
+- **`app`** (`ansible/roles/app`): НЕ делает `docker compose up` напрямую — готовит
+  окружение (env, `FRONTEND_IMAGE`/`BACKEND_IMAGE` в CI-режиме, postgres up +
+  `pg_isready` + синхронизация пароля роли ДО старта слотов — рестарт backend не нужен)
+  и вызывает `deploy_0downtime.sh` (`--pull` CI / `--build` ручной).
 - **nginx-proxy** (`nginxproxy/nginx-proxy` + `nginxproxy/acme-companion`):
   общий reverse-proxy один раз на сервере (тег `proxy`). Мульти-проект —
-  каждый frontend-контейнер подключается к `reverse-proxy` и объявляет свой `VIRTUAL_HOST`.
+  каждый edge-nginx подключается к `reverse-proxy` и объявляет свой `VIRTUAL_HOST`.
 
 Dockerfile's (split, multi-stage):
 - **`Dockerfile.frontend`**: deps → `nuxt build` → production (Nitro server, 3000).

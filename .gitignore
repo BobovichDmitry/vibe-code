@@ -31,6 +31,8 @@
 *.tsbuildinfo
 .DS_Store
 .app.secrets
+# Состояние blue-green деплоя (активный слот; создаёт docker/deploy_0downtime.sh)
+docker/.active-slot
 .env.*.local
 .env.local
 .idea/

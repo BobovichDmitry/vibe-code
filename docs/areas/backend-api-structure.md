@@ -2,7 +2,7 @@
 
 ## Описание
 
-Nest.js API с глобальным префиксом `/api`. Модули: `AuthModule` (JWT авторизация), `UsersModule` (CRUD пользователей), `FilesModule` (загрузка/хранение файлов в S3), `BrandingModule` (брендинг). База данных: SQLite (dev) / PostgreSQL (prod) через TypeORM.
+Nest.js API с глобальным префиксом `/api`. Модули: `AuthModule` (JWT авторизация), `UsersModule` (CRUD пользователей), `FilesModule` (загрузка/хранение файлов в S3), `BrandingModule` (брендинг), `HealthModule` (public healthcheck). База данных: SQLite (dev) / PostgreSQL (prod) через TypeORM.
 
 ## Ключевые файлы
 
@@ -39,6 +39,12 @@ Nest.js API с глобальным префиксом `/api`. Модули: `Au
 | POST | `/api/users` | JWT | Create user |
 | PATCH | `/api/users/:id` | JWT | Update user |
 | DELETE | `/api/users/:id` | JWT | Delete user |
+
+### Health
+
+| Method | Endpoint | Auth | Описание |
+|--------|----------|------|----------|
+| GET | `/api/health` | — | Healthcheck (public). Используется compose-healthcheck'ами и скриптом деплоя без простоя (`docker/deploy_0downtime.sh`) |
 
 **Create user request**: `{ login: string, password: string, role?: 'admin' | 'user' }`
 **User response**: `{ id, login, role, createdAt, updatedAt }` (no passwordHash)

@@ -2,12 +2,13 @@
 
 ## Обзор
 
-Приложение состоит из **двух отдельных сервисов** в Docker:
+Приложение состоит из **двух отдельных сервисов** в Docker (prod — плюс edge-nginx,
+см. blue-green ниже):
 
-- **frontend** (Nuxt 3 SSR, Nitro-сервер) — порт **3000**, edge (за nginx-proxy).
+- **frontend** (Nuxt 3 SSR, Nitro-сервер) — порт **3000**, за nginx-proxy
+  (в prod — за внутренним edge-nginx, см. blue-green).
   Рендерит публичную часть на сервере (SSR), проксирует `/api/**` → backend.
-- **backend** (Nest.js API) — порт **3001**, внутренний (без `VIRTUAL_HOST`,
-  порт наружу не проброшен). Чистый API на `/api`.
+- **backend** (Nest.js API) — порт **3001**, внутренний. Чистый API на `/api`.
 - **postgres** — внутренний (порт 5432 наружу не проброшен в prod).
 
 Nuxt проксирует `/api/**` → `http://backend:3001` через `routeRules`
@@ -47,17 +48,18 @@ docker compose up -d
 Сервисы: `frontend` (3000:3000), `backend` (3001:3001), `postgres` (5432:5432).
 Nuxt проксирует `/api` → `http://backend:3001/api`.
 
-### Production (`docker-compose.prod.yml`)
+### Production (`docker-compose.prod.yml`) — blue-green без простоя
 
-```bash
-cd docker
-cp .env.example .env   # или рендерится ansible из templates/env.j2
-docker compose -f docker-compose.prod.yml up -d --build
-```
+Prod-деплой — **blue-green без простоя**: edge-nginx (`nginx:1.27-alpine`,
+единственный `VIRTUAL_HOST` в reverse-proxy сети) → слоты
+`frontend-blue/backend-blue` и `frontend-green/backend-green` в изолированных
+сетях `slot_blue`/`slot_green` (aliases `frontend`/`backend`); postgres общий.
+Healthcheck'и: backend — `/api/health`, frontend — `/`. Переключение слотов —
+runtime-файл `docker/nginx/runtime/upstream-frontend.conf` + `nginx -s reload`.
+Запуск — `docker/deploy_0downtime.sh` (вызывается ролью `app`), не `up -d`.
+Полный алгоритм (активный слот из `docker/.active-slot`, bootstrap, rollback,
+Telegram-нотификации) — [`areas/blue-green-deploy.md`](areas/blue-green-deploy.md).
 
-- `frontend` — `VIRTUAL_HOST`/`LETSENCRYPT_*`, сеть `reverse-proxy`, порт 3000.
-- `backend` — без `VIRTUAL_HOST`, без проброса порта, внутренняя сеть.
-- `postgres` — без проброса 5432.
 
 При старте backend сам создаёт `DB_DATABASE`, если её нет (нужно право
 `CREATEDB` у `DB_USERNAME`; в шаблоне `POSTGRES_USER` — superuser).
@@ -172,7 +174,8 @@ URL backend (без правок кода).
 `deploy.sh` (корень) читает корневой `.env` (SSH, DOMAIN, PROJECT_NAME, бренд,
 admin), sftp'ит архив на сервер, генерирует `.app.secrets` (db_password,
 jwt_secret) и запускает `ansible-playbook`. Ansible ставит Docker, поднимает
-nginx-proxy + acme-companion, собирает и поднимает frontend+backend+postgres.
+nginx-proxy + acme-companion и деплоит приложение через blue-green-скрипт
+(`docker/deploy_0downtime.sh`).
 
 ### SSH-ключ без tty (CI/агент)
 
@@ -192,26 +195,23 @@ nginx-proxy + acme-companion, собирает и поднимает frontend+ba
 Механика: деплой-скрипт → `vars.yml` → `env.j2` → `docker/env`.
 
 - **CI (`docker/deploy_ci.sh`)**: собирает `ALL_DEPLOY_KEYS` из merged yq
-  (`.envs/<env>/public.yaml` + расшифрованный `secret.enc.yaml`, **ВЕРХНИМ**
-  регистром); в `deploy-env.sh` пишет все значения плюс `EXTRA_ENV_KEYS`
-  (= все ключи минус `BASE_DEPLOY_KEYS` — базовые ключи деплоя: `SSH_*`,
-  `DEPLOY_*`, `DOMAIN`, `PROJECT_*`, `BRAND_*`, `ADMIN_*`, `PROXY_DIR`,
-  `ARCHIVE_PATH` и т.п., рендерятся отдельными полями `vars.yml`).
-  В GitLab CI задаётся **только** age-ключ (`SOPS_AGE_KEY_TEST`/`SOPS_AGE_KEY_PRODUCTION`).
-- **Ручной деплой (`deploy.sh`)**: список доп. переменных — `S3_ENV_VARS`
-  (14 `S3_*`-переменных) + `PUBLIC_BASE_URL` + `MOCK_TELEGRAM_POST_URL` +
-  расширяемый `EXTRA_DEPLOY_ENV_VARS` из корневого `.env`. Источники:
-  `.env` → `apps/backend/.env.local` (gitignored).
-- На сервере в `vars.yml` рендерится `extra_env: { KEY: "value" }`, а `env.j2`
+  (`.envs/<env>/public.yaml` + `secret.enc.yaml`, **ВЕРХНИМ** регистром); в
+  `deploy-env.sh` пишет все значения плюс `EXTRA_ENV_KEYS` (= все ключи минус
+  `BASE_DEPLOY_KEYS` — `SSH_*`, `DEPLOY_*`, `DOMAIN`, `PROJECT_*`, `BRAND_*`,
+  `ADMIN_*` и т.п.). В GitLab CI задаётся **только** age-ключ
+  (`SOPS_AGE_KEY_TEST`/`SOPS_AGE_KEY_PRODUCTION`).
+- **Ручной деплой (`deploy.sh`)**: `S3_ENV_VARS` (14 `S3_*`) +
+  `PUBLIC_BASE_URL` + `MOCK_TELEGRAM_POST_URL` + расширяемый
+  `EXTRA_DEPLOY_ENV_VARS` из корневого `.env`. Источники: `.env` →
+  `apps/backend/.env.local` (gitignored).
+- На сервере в `vars.yml` рендерится `extra_env: { KEY: "value" }`, `env.j2`
   generic-циклом `{% for key, value in extra_env.items() %}` превращает это
-  в `KEY=value`. `group_vars/all.yml` содержит одно поле `extra_env: {}` —
-  отдельных s3_*/public_base_url/mock_telegram_post_url полей больше нет.
-- `deploy-env.sh` на сервере — права **chmod 600** (содержит пароли/ключи).
+  в `KEY=value` (`group_vars/all.yml` содержит одно поле `extra_env: {}`).
+  `deploy-env.sh` на сервере — права **chmod 600** (содержит пароли/ключи).
 
 S3-персистентность: значения кешируются в `<project_dir>/.app.s3` (umask 077,
 shell-экранирование) — деплой без заданных `S3_*` не затирает настроенный S3.
-`S3_*` идут через этот же generic-механизм. Файлы `.env.local` и `.app.s3`
-исключены из tar-архивов деплоя.
+`.env.local` и `.app.s3` исключены из tar-архивов деплоя.
 
 Полная инструкция — в [`ansible/README.md`](../ansible/README.md) и
 [`deploy.sh`](../deploy.sh). Логи — `logs/deploy.log`; в конце деплоя печатается
@@ -237,10 +237,9 @@ shell-экранирование) — деплой без заданных `S3_*
    PROJECT_NAME, BRAND_*).
 2. `./deploy.sh` — собирает архив, sftp, генерация секретов, ansible-playbook.
 3. Healthcheck: `https://<DOMAIN>/api/users/count` → 200.
-4. Проверка версии: `curl https://<DOMAIN>/api/version` — `{ "version": "…", "commit": "…", "build": 1 }`.
-   В CI-деплое `commit` проставляется автоматически (APP_COMMIT_SHA = SHA коммита);
-   в ручном — через `EXTRA_DEPLOY_ENV_VARS="APP_COMMIT_SHA"` + `APP_COMMIT_SHA=…` в `.env`;
-   `build` — хардкод в `apps/backend/src/version/version.controller.ts`.
+4. Проверка версии: `curl https://<DOMAIN>/api/version` — `{ "version": "…", "commit": "…", "build": 1 }` (build — хардкод в `apps/backend/src/version/version.controller.ts`).
+   В CI-деплое `commit` проставляется автоматически (APP_COMMIT_SHA = SHA коммита),
+   в ручном — через `EXTRA_DEPLOY_ENV_VARS="APP_COMMIT_SHA"` + `APP_COMMIT_SHA=…` в `.env`.
 
 ### nginx-proxy (мульти-проект)
 
@@ -258,10 +257,16 @@ shell-экранирование) — деплой без заданных `S3_*
 
 ### Особенности ansible-ролей
 
-- **`app`**: после `docker compose up -d` — ожидание готовности PostgreSQL
-  (`pg_isready` с ретраями) и idempotent-синхронизация пароля роли через
-  `ALTER USER` (`no_log`, экранирование кавычек) с рестартом backend при
-  изменении. Лечит ошибку `28P01` при смене `db_password`.
+- **`app`**: готовит окружение (env, `FRONTEND_IMAGE`/`BACKEND_IMAGE` в
+  `docker/.env` в CI-режиме, postgres up + `pg_isready` + синхронизация пароля
+  роли через `ALTER USER` (`no_log`, экранирование кавычек) **до старта слотов**
+  — рестарт backend после синхронизации больше не нужен) и вызывает
+  `./deploy_0downtime.sh <project_name> --pull` (CI) или `--build` (ручной
+  `deploy.sh`). Лечит ошибку `28P01` при смене `db_password`. Healthcheck в
+  playbook.yml — через edge-nginx:
+  `docker compose exec -T edge-nginx wget -qO- http://127.0.0.1/api/users/count`.
+  Также в `group_vars/all.yml` добавлены `prod_compose_file: "docker-compose.prod.yml"`
+  и `cors_origin: "https://{{ domain }}"`.
 - **`nginx_proxy`**: создаёт `{{ proxy_dir }}/vhost.d/default` с
   `client_max_body_size 500M` (nginx-proxy по умолчанию режет тела >1M —
   413). `compose-proxy.yml.j2` монтирует `vhost.d` с хоста (bind-mount);
@@ -276,8 +281,8 @@ shell-экранирование) — деплой без заданных `S3_*
 2. **CORS blocked** — `CORS_ORIGIN` backend должен включать домен (prod) /
    `http://localhost:3000` (dev). SSR-фетч идёт мимо CORS.
 3. **Backend не стартует** — проверьте `docker compose logs backend`; частая
-   причина — PostgreSQL ещё не готов. Backend сам ретраит подключение
-   (5 попыток × 3с) и создаёт БД при отсутствии (`ensure-database.ts`).
+   причина — PostgreSQL ещё не готов. Backend ретраит подключение (5×3с)
+   и создаёт БД при отсутствии (`ensure-database.ts`).
 4. **`/api` 404 на клиенте** — Nuxt не проксирует: проверьте `routeRules` в
    `nuxt.config.ts` и `NUXT_API_BASE`.
 5. **401 на /admin под SSR** — cookie не проксируется: проверьте `useApi`
@@ -297,8 +302,8 @@ CI-специфичные ошибки (пропущенный деплой, `do
 - [ ] `DB_SYNCHRONIZE=false` (prod — миграции при старте)
 - [ ] Миграции накатываются (`docker compose logs backend` — нет ошибок TypeORM)
 - [ ] DNS-запись домена указывает на IP сервера
-- [ ] `docker compose -p <project> -f docker-compose.prod.yml up -d --build` прошёл
-- [ ] PostgreSQL healthcheck прошёл
+- [ ] `deploy_0downtime.sh` завершился успешно (новый слот поднят, upstream переключён)
+- [ ] PostgreSQL healthcheck прошёл (перед стартом слотов — `pg_isready`)
 - [ ] HTTPS-сертификат получен (acme-companion)
 - [ ] `curl -I https://<DOMAIN>/` → 200 (frontend SSR)
 - [ ] `curl https://<DOMAIN>/api/users/count` → 200 (прокси → backend)

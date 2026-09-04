@@ -6,6 +6,7 @@
 | `project-overview.md` | Общая архитектура | Понимание стека и структуры |
 | `deployment.md` | Docker, порты, env | Деплой (deploy.sh, ansible, docker-compose, MinIO), контейнеризация, конфиги |
 | `areas/ci-deployment.md` | CI-деплой | GitLab CI (build → deploy, образ ci-deploy), секреты SOPS+age, deploy_ci.sh, маркеры DEPLOY-* |
+| `areas/blue-green-deploy.md` | Prod-деплой без простоя | Blue-green слоты (blue/green), edge-nginx, deploy_0downtime.sh, .active-slot, rollback, Telegram-нотификации |
 | `agents.md` | Сводка для субагентов | Быстрая навигация и правила |
 | `areas/backend-api-structure.md` | Backend API (auth, users, files) | CRUD пользователей, JWT auth, S3-файлы |
 | `areas/auth-structure.md` | Аутентификация | JWT, login/logout, guard |

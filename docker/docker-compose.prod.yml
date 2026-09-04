@@ -1,72 +1,131 @@
 # =============================================================================
 # Production docker-compose (ansible-деплой + CI-деплой из Registry).
 #
-# Два режима:\n#   1) ansible (deploy.sh): FRONTEND_IMAGE/BACKEND_IMAGE не заданы →
-#      docker compose build собирает образы и тегирует их значениями image:
-#      (по умолчанию «<имя>:local»), затем up -d.
-#   2) GitLab CI: образы уже собраны и запушены в Registry; CI передаёт
-#      FRONTEND_IMAGE/BACKEND_IMAGE (тег по SHA) и делает pull + up -d.
+# Схема 0downtime (blue-green):
 #
-# Три сервиса:
-#   frontend (Nuxt SSR, 3000) — edge, за nginx-proxy (VIRTUAL_HOST + Let's Encrypt);
-#   backend  (Nest API, 3001)  — внутренний, БЕЗ VIRTUAL_HOST (внешний трафик
-#                               идёт только на frontend; Nuxt проксирует /api/**);
-#   postgres                  — без проброса 5432 наружу.
+#   nginx-proxy (общий, внешний)
+#     └── edge-nginx (VIRTUAL_HOST; runtime-swappable upstream)
+#           ├── frontend-blue ← backend-blue    (сеть slot_blue)
+#           └── frontend-green ← backend-green   (сеть slot_green)
+#   postgres — общий для обоих слотов.
 #
-# frontend зависит от backend; Nuxt проксирует /api/** → http://backend:3001
-# (nitro routeRules, цель из NUXT_API_BASE).
+# Слот = пара frontend (Nitro SSR, 3000) + backend (Nest API, 3001).
+# Внутри своей сети каждый backend/frontend имеет alias 'backend'/'frontend' —
+# Nitro проксирует /api/** → http://backend:3001/api (NUXT_API_BASE), т.е.
+# слот переключается целиком, не завися от цвета другого слота.
+#
+# Переключает слоты скрипт docker/deploy_0downtime.sh: он переписывает
+# nginx/runtime/upstream-frontend.conf и делает `nginx -s reload` в edge-nginx.
+#
+# Два режима образов:
+#   1) ansible (deploy.sh): FRONTEND_IMAGE/BACKEND_IMAGE не заданы →
+#      скрипт деплоя собирает образы на сервере (`--build`).
+#   2) GitLab CI: образы уже собраны в Registry; скрипт деплоя делает pull
+#      (`--pull`, FRONTEND_IMAGE/BACKEND_IMAGE переданы через docker/.env).
 # =============================================================================
 
 services:
-  frontend:
-    # CI: frontend-образ из Registry (см. .gitlab-ci.yml);
-    # ansible/build без переменных — локальный тег из compose build.
+
+  # ===========================================================================
+  # Edge: nginx между nginx-proxy и слотами. Единственный сервис в reverse-proxy.
+  # ===========================================================================
+  edge-nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx/conf.d/edge.conf:/etc/nginx/conf.d/default.conf:ro
+      # runtime-файл: скрипт деплоя переписывает его на сервере и делает
+      # `nginx -s reload` — переключение слота без разрыва соединений.
+      - ./nginx/runtime/upstream-frontend.conf:/etc/nginx/runtime/upstream-frontend.conf:ro
+    expose:
+      - 80
+    environment:
+      # nginx-proxy маршрутизация + Let's Encrypt.
+      VIRTUAL_HOST: ${VIRTUAL_HOST}
+      LETSENCRYPT_HOST: ${LETSENCRYPT_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    networks:
+      - slot_blue
+      - slot_green
+      - reverse-proxy
+
+  # ===========================================================================
+  # Blue-green слоты: описание сервисов одно (якоря x-frontend/x-backend),
+  # различаются только сетью и суффиксом имени.
+  # ===========================================================================
+  frontend-blue:
+    &frontend-common
     image: ${FRONTEND_IMAGE:-app-frontend:local}
     build:
       context: ../
       dockerfile: docker/Dockerfile.frontend
+    restart: unless-stopped
     env_file:
       - ./env
     environment:
-      # nginx-proxy маршрутизация + Let's Encrypt (только frontend — edge).
-      VIRTUAL_HOST: ${VIRTUAL_HOST}
-      LETSENCRYPT_HOST: ${LETSENCRYPT_HOST}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
-      # SSR-фетч к backend (имя сервиса = 'backend', внутренняя сеть).
+      # SSR-фетч к backend СВОЕГО слота: alias 'backend' в сети слота.
       NUXT_API_BASE: http://backend:3001/api
-      # Клиентский base — относительный /api (браузер → свой origin → Nitro прокси).
       NUXT_PUBLIC_API_BASE: /api
+    expose:
+      - 3000
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
+      timeout: 5s
+      interval: 5s
+      retries: 30
     networks:
-      - default
-      - reverse-proxy
-    depends_on:
-      backend:
-        condition: service_started
-    restart: unless-stopped
+      slot_blue:
+        aliases:
+          - frontend
 
-  backend:
+  backend-blue:
+    &backend-common
     image: ${BACKEND_IMAGE:-app-backend:local}
     build:
       context: ../
       dockerfile: docker/Dockerfile.backend
-    # НЕТ VIRTUAL_HOST — backend внутренний, наружу не торчит.
-    # НЕТ проброса порта — только внутренняя сеть.
+    restart: unless-stopped
     env_file:
       - ./env
     environment:
-      # CORS = домен (за nginx-proxy) для клиентского fetch.
-      CORS_ORIGIN: ${CORS_ORIGIN}
       # Cookie-auth: secure в проде (HTTPS за nginx-proxy).
       COOKIE_SECURE: "true"
-    restart: unless-stopped
+    expose:
+      - 3001
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1
+      timeout: 5s
+      interval: 5s
+      retries: 30
+    networks:
+      slot_blue:
+        aliases:
+          - backend
 
+  frontend-green:
+    <<: *frontend-common
+    networks:
+      slot_green:
+        aliases:
+          - frontend
+
+  backend-green:
+    <<: *backend-common
+    networks:
+      slot_green:
+        aliases:
+          - backend
+
+  # ===========================================================================
+  # Общие зависимости (общие для обоих слотов)
+  # ===========================================================================
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${DB_DATABASE}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-    # НЕТ проброса 5432 — только внутренняя сеть.
+    # НЕТ проброса 5432 — только внутренние сети слотов.
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -77,12 +136,17 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    networks:
+      - slot_blue
+      - slot_green
 
 volumes:
   pg_data:
 
 networks:
-  default:
+  slot_blue:
+    driver: bridge
+  slot_green:
     driver: bridge
   reverse-proxy:
     external: true
