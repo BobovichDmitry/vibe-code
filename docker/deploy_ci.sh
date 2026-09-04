@@ -120,33 +120,43 @@ ensure_sops_yq() {
     echo "✗ Не удалось скачать $url после 3 попыток" >&2
     return 1
   }
-  # Поиск заранее положенных бинарников на /opt/binaries
-  find_preinstalled() {
-    local name="$1" cand
+  # Поиск заранее положенного бинарника на /opt/binaries. КАНДИДАТ ОБЯТЕЛЬНО
+  # проверяется запуском (--version): в /opt/binaries/<name> может лежать и
+  # распакованная папка (у неё -x тоже истинен), и битый бинарник.
+  resolve_preinstalled() {
+    local name="$1" cand found
     for cand in \
       "/opt/binaries/$name" \
       "/opt/binaries/$name.$(uname -m)" \
       "/opt/binaries/$(uname -m)/$name" \
-      "/opt/binaries/$name-$(uname -s | tr '[:upper:]' '[:lower:]')"; do
-      if [ -x "$cand" ]; then
-        echo "$cand"
-        return 0
+      "/opt/binaries/$name-$(uname -s | tr '[:upper:]' '[:lower:]')" \
+      "/opt/binaries/$name"/*"$name"* \
+      "/opt/binaries/$name"/*/*"$name"*; do
+      # Только обычный исполняемый файл ( НЕ директория!
+      [ -f "$cand" ] || continue
+      [ -x "$cand" ] || continue
+      if "$cand" --version >/dev/null 2>&1; then
+        found="$cand"
+        break
       fi
     done
-    return 1
+    [ -n "${found:-}" ] || return 1
+    # Копия (не symlink): бинарник точно останется рабочим в isolate-контексте
+    cp "$found" "$TOOL_BIN/$name" && echo "$found"
   }
-  local found
   if ! command -v sops >/dev/null 2>&1; then
-    if found="$(find_preinstalled sops)"; then
-      ln -s "$found" "$TOOL_BIN/sops"; echo "→ sops: использую $found"
+    found="$(resolve_preinstalled sops)" || found=""
+    if [ -n "$found" ]; then
+      echo "→ sops: использую $found"
     else
       echo "→ Установка sops (v3.9.4)..."
       dl_with_retry "https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.${arch}" "$TOOL_BIN/sops" && chmod +x "$TOOL_BIN/sops"
     fi
   fi
   if ! command -v yq >/dev/null 2>&1; then
-    if found="$(find_preinstalled yq)"; then
-      ln -s "$found" "$TOOL_BIN/yq"; echo "→ yq: использую $found"
+    found="$(resolve_preinstalled yq)" || found=""
+    if [ -n "$found" ]; then
+      echo "→ yq: использую $found"
     else
       echo "→ Установка yq (v4.47.2)..."
       local os="${arch%%.*}"
@@ -156,8 +166,10 @@ ensure_sops_yq() {
       dl_with_retry "https://github.com/mikefarah/yq/releases/download/v4.47.2/yq_${os}_${yq_arch}" "$TOOL_BIN/yq" && chmod +x "$TOOL_BIN/yq"
     fi
   fi
-  command -v sops >/dev/null 2>&1 || { echo "✗ sops не установлен" >&2; exit 1; }
-  command -v yq >/dev/null 2>&1  || { echo "✗ yq не установлен" >&2; exit 1; }
+  # Финальная проверка — РЕАЛЬНЫЙ запуск (command -v недостаточно: ловит битые
+  # бинарники и symlink'и на директории).
+  sops --version >/dev/null 2>&1 || { echo "✗ sops не работает: $(sops --version 2>&1 | head -1)" >&2; exit 1; }
+  yq --version >/dev/null 2>&1  || { echo "✗ yq не работает: $(yq --version 2>&1 | head -1)" >&2; exit 1; }
 }
 ensure_sops_yq
 
