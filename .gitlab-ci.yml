@@ -28,7 +28,8 @@
 # в git: .envs/<env>/secret.enc.yaml (цикл encrypt/decrypt — scripts/encrypt.sh,
 # scripts/decrypt.sh).
 #
-# Ветка master (default) → build → авто-деплой в test И production.
+# Ветка master (default) → build → авто-деплой ТОЛЬКО в production.
+# Ветка develop → build → авто-деплой ТОЛЬКО в test.
 # Если age-ключ не задан — деплой-джоба ПРОПУСКАЕТСЯ
 # (warning в консоли, пайплайн зелёный, ошибок нет).
 #
@@ -141,8 +142,7 @@ deploy:test:
     name: test
   resource_group: deploy-test
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    # Развиваем test-стенд и из develop (не только из default-ветки)
+    # Test-стенд развивается ТОЛЬКО из develop (master деплоит только прод)
     - if: $CI_COMMIT_BRANCH == "develop"
   script:
     # Age-ключ не задан → деплой ПРОПУСКАЕТСЯ (джоба зелёная), а не падает.
