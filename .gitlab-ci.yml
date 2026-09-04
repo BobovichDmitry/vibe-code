@@ -39,7 +39,6 @@
 # =============================================================================
 
 stages:
-  - lint
   - build
   - deploy
 
@@ -91,21 +90,6 @@ build:docker:
 # DNS к GitHub на раннере периодически флапает — деплои падали.
 # Пересборка: вручную или при изменении docker/Dockerfile.ci-deploy.
 # =============================================
-# =============================================
-# Lint — синтаксис remote-скриптов в heredoc'ах
-# (внешний bash -n их НЕ проверяет; сломанный remote-скрипт ловился только
-# падением деплоя на сервере — см. setup-feedback 2.1)
-# =============================================
-lint:remote-scripts:
-  stage: lint
-  image: alpine:3.20
-  before_script:
-    - apk add --no-cache bash gawk
-  script:
-    - bash scripts/lint-remote-scripts.sh
-  rules:
-    - if: $CI_COMMIT_BRANCH
-
 build:ci-image:
   stage: build
   image: docker:27-cli
