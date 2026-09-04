@@ -233,6 +233,12 @@ if [ -z "${APP_COMMIT_SHA:-}" ] && [ -n "${CI_COMMIT_SHORT_SHA:-}" ]; then
   ALL_DEPLOY_KEYS="$ALL_DEPLOY_KEYS APP_COMMIT_SHA"
 fi
 
+# Сообщение коммита (для Telegram-уведомлений деплоя) — тем же pass-through.
+if [ -z "${APP_COMMIT_MSG:-}" ] && [ -n "${CI_COMMIT_TITLE:-}" ]; then
+  export APP_COMMIT_MSG="$CI_COMMIT_TITLE"
+  ALL_DEPLOY_KEYS="$ALL_DEPLOY_KEYS APP_COMMIT_MSG"
+fi
+
 BUNDLE_DIR="$(mktemp -d /tmp/deploy-ci.XXXXXX)"
 chmod 700 "$BUNDLE_DIR"
 

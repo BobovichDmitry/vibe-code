@@ -95,7 +95,26 @@ tg_react() {
 }
 
 START_TS="$(date +%s)"
-TEXT="<b>Deploy $PROJECT</b>"
+
+# Инфо для Telegram-уведомлений: домен, SHA и сообщение коммита.
+# APP_COMMIT_SHA/APP_COMMIT_MSG прокидываются в docker/env через extra_env
+# (CI / deploy_local.sh); SHA дополнительно берётся из тега FRONTEND_IMAGE.
+DEPLOY_DOMAIN="$(env_val VIRTUAL_HOST)"
+DEPLOY_SHA="$(env_val APP_COMMIT_SHA)"
+if [ -z "$DEPLOY_SHA" ]; then
+  DEPLOY_SHA="$(env_val FRONTEND_IMAGE | sed 's/.*://')"
+fi
+# Сообщение коммита сокращаем до 20 символов
+DEPLOY_MSG="$(env_val APP_COMMIT_MSG)"
+if [ ${#DEPLOY_MSG} -gt 20 ]; then DEPLOY_MSG="${DEPLOY_MSG:0:20}…"; fi
+DEPLOY_INFO=""
+[ -n "$DEPLOY_DOMAIN" ] && DEPLOY_INFO="<b>Домен:</b> $DEPLOY_DOMAIN\n"
+if [ -n "$DEPLOY_SHA" ]; then
+  DEPLOY_INFO="${DEPLOY_INFO}<b>Коммит:</b> $DEPLOY_SHA"
+  [ -n "$DEPLOY_MSG" ] && DEPLOY_INFO="$DEPLOY_INFO ($DEPLOY_MSG)"
+  DEPLOY_INFO="${DEPLOY_INFO}\n"
+fi
+TEXT="<b>Deploy $PROJECT</b>\n${DEPLOY_INFO}"
 TG_MSG_ID="$(tg_send "$TEXT")"
 
 # --- Слоты ---

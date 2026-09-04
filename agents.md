@@ -334,7 +334,7 @@ cd docker && docker compose -f docker-compose.e2e.yml up e2e
   Ошибка → rollback upstream на активный слот. Bootstrap (нет `.active-slot`):
   поднимается только новый слот. Telegram-нотификации при заданных `BOT_TOKEN` +
   `TELEGRAM_NOTIFY_CHAT` (опц. `TELEGRAM_NOTIFY_TOPIC`) в `docker/env`:
-  start-сообщение → edit в итог (слот, время, результат) + реакция 👍; не заданы —
+  start-сообщение → edit в итог (домен, коммит (SHA + сообщение до 20 симв.), слот, время, результат) + реакция 👍; не заданы —
   пропускаются молча. Сборка — на сервере внутри Docker (split Dockerfile'ы).
 - **`app`** (`ansible/roles/app`): НЕ делает `docker compose up` напрямую — готовит
   окружение (env, `FRONTEND_IMAGE`/`BACKEND_IMAGE` в CI-режиме, postgres up +

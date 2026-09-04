@@ -41,6 +41,13 @@ if [ -z "${IMAGE_SHA:-}" ]; then
 fi
 export FRONTEND_IMAGE="${FRONTEND_IMAGE:-$REGISTRY/$PROJECT_PATH/frontend:$IMAGE_SHA}"
 export BACKEND_IMAGE="${BACKEND_IMAGE:-$REGISTRY/$PROJECT_PATH/backend:$IMAGE_SHA}"
+# SHA коммита и его сообщение — для /api/version и Telegram-уведомлений деплоя.
+if [ -z "${APP_COMMIT_SHA:-}" ]; then
+  export APP_COMMIT_SHA="$IMAGE_SHA"
+fi
+if [ -z "${APP_COMMIT_MSG:-}" ]; then
+  export APP_COMMIT_MSG="$(git show -s --pretty=%s "${IMAGE_SHA}^{commit}")"
+fi
 export DEPLOY_ENV
 export CI_REGISTRY="$REGISTRY"
 
