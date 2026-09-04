@@ -101,3 +101,28 @@ nginx-proxy (общий, не трогаем)
 
 - edge-nginx при reboot сервера может стартовать до слота (nginx не резолвит upstream) — но `restart: unless-stopped` поднимет его после старта слота.
 - Blue-green проверен синтаксически/конфигурационно, но не на живом деплое — первый тестовый деплой показать пользователю.
+
+---
+
+## Дополнение: доводка на живом проде (2026-09-04)
+
+Blue-green схема доведена до рабочего состояния через локальный деплой (`deploy_local.sh`, минуя CI). Найдено и исправлено в процессе:
+
+1. **CI-деплой не запускался**: в GitLab не были заданы `SOPS_AGE_KEY_TEST/PRODUCTION` (прописал пользователь).
+2. **`ensure_sops_yq`**: `/opt/binaries/sops` на раннере — папка (у директорий `-x` истинен) → symlink на папку → `command -v` проваливался. Теперь только обычный файл + проба запуска `--version`, копия вместо symlink.
+3. **`yml_str`**: однострочник с `${s//\"/\}` — синтаксическая ошибка bash на Linux (парсинг падал на дальней `(`). Развернута в многострочную, проверена на сервере.
+4. **tar-исключения `--exclude=tasks`** вырезали `ansible/roles/*/tasks/` — роли ansible не обновлялись на сервере со времён d38d343 («no such service: frontend»). Все корневые исключения заякорены `./`.
+5. **`proxy_compose_file`/`cors_origin`/`prod_compose_file`** — отсутствовавшие переменные group_vars (плейбук падал).
+6. **YAML**: `name:` с незакавыченным `CI: pull` — parse error ansible.
+7. **Синхронизация пароля PG**: heredoc+jinja ломал парсер ansible 2.16 → `echo SQL | psql -v pw=...` (интерполяция `:'pw'` работает только в stdin, не в `-c`).
+8. **`extra_env: null`** при пустых ключах (локальный деплой без CI-переменных) → `env.j2` падал на `.items()`. Фикс: `default({}, true)` + `extra_env: {}`.
+9. **Healthcheck'и слотов**: `localhost` → `::1` в alpine (Nitro слушает IPv4) → вечно unhealthy. Заменено на `127.0.0.1`.
+10. **Bind-mount inode-ловушка**: file-mount nginx-конфигов + tar-распаковка (новые inode) → nginx видел устаревший upstream, 502 после остановки старого слота. Монтируются каталоги `conf.d/` и `runtime/`.
+11. **Bootstrap**: upstream пишется в реально поднимаемый слот ДО старта edge-nginx + `--force-recreate` (up -d не пересоздаёт рестарт-луп); rollback в bootstrap пишет standby.
+12. **Keepalive edge→Nitro**: nginx map `'' → ''` (не close) — иначе мёртвые сокеты в пуле → чередование 200/400.
+13. **Windows-совместимость deploy_ci.sh**: temp-файл вместо process substitution (нативный yq.exe), early-return `ensure_sops_yq` при готовых инструментах; `deploy_local.sh` скачивает sops/yq в `.tools/`.
+14. **Легаси-контейнеры** старой схемы (frontend/backend) удаляются в конце успешного деплоя (двойной VIRTUAL_HOST у nginx-proxy).
+
+CI на время отладки отключён (`workflow: when: never` в .gitlab-ci.yml — вернуть при необходимости). Ручной деплой описан в корневом AGENTS.md (deploy_local.sh + отладка на сервере).
+
+Итоговое состояние прода: active-slot green, `/api/health` 200, `/api/version` 200, `/api/users/count` 200, корень 200 — три полных цикла деплоя (bootstrap → blue → green) без простоя.
