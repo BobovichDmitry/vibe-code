@@ -463,7 +463,12 @@ YML
 # (кроме базовых ключей деплоя — они отдельные поля vars.yml), уезжает в docker/env
 # как есть: vars.yml: extra_env: { KEY: "value" } → env.j2 рендерит "KEY=value".
 # Экранирование значений для YAML-строки в двойных кавычках (\ и ").
-yml_str() { local s="${2//\\/\\\\}"; s="${s//\"/\\"}"; printf '%s: "%s"\n' "$1" "$s"; }
+yml_str() {
+  local s="$2"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '%s: "%s"\n' "$1" "$s"
+}
 cat >> ansible/vars.yml <<YML
 extra_env:
 YML
