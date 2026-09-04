@@ -108,13 +108,17 @@ fi
 DEPLOY_MSG="$(env_val APP_COMMIT_MSG)"
 if [ ${#DEPLOY_MSG} -gt 20 ]; then DEPLOY_MSG="${DEPLOY_MSG:0:20}…"; fi
 DEPLOY_INFO=""
-[ -n "$DEPLOY_DOMAIN" ] && DEPLOY_INFO="<b>Домен:</b> $DEPLOY_DOMAIN\n"
+tg_escape() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+[ -n "$DEPLOY_DOMAIN" ] && DEPLOY_INFO="<b>Домен:</b> $DEPLOY_DOMAIN
+"
 if [ -n "$DEPLOY_SHA" ]; then
   DEPLOY_INFO="${DEPLOY_INFO}<b>Коммит:</b> $DEPLOY_SHA"
-  [ -n "$DEPLOY_MSG" ] && DEPLOY_INFO="$DEPLOY_INFO ($DEPLOY_MSG)"
-  DEPLOY_INFO="${DEPLOY_INFO}\n"
+  [ -n "$DEPLOY_MSG" ] && DEPLOY_INFO="$DEPLOY_INFO ($(tg_escape "$DEPLOY_MSG"))"
+  DEPLOY_INFO="${DEPLOY_INFO}
+"
 fi
-TEXT="<b>Deploy $PROJECT</b>\n${DEPLOY_INFO}"
+TEXT="<b>Deploy $PROJECT</b>
+${DEPLOY_INFO}"
 TG_MSG_ID="$(tg_send "$TEXT")"
 
 # --- Слоты ---
