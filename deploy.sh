@@ -30,8 +30,10 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 
 # --- Маркер окончания деплоя (trap EXIT): агент/скрипт может ждать строку
 # DEPLOY-FINISHED (успех) или DEPLOY-FAILED (ошибка) в stdout или logs/deploy.log ---
+# cleanup_ssh_agent гасит локальный ssh-agent и askpass-хелпер, если их подняли.
 deploy_exit_marker() {
   local code=$?
+  cleanup_ssh_agent
   if [ "$code" = "0" ]; then
     echo "### DEPLOY-FINISHED: deploy.sh завершился успешно (exit 0) ###"
   else
@@ -43,12 +45,32 @@ trap deploy_exit_marker EXIT
 echo ""
 echo "===== deploy.sh — $(date '+%Y-%m-%d %H:%M:%S') ====="
 
+# --- Cleanup: локальный ssh-agent + askpass-хелпер (если их подняли) ---
+SSH_AGENT_LOCAL_PID=""
+SSH_AGENT_CLEANUP_FILES=()
+cleanup_ssh_agent() {
+  if [ -n "${SSH_AGENT_LOCAL_PID:-}" ]; then
+    kill "$SSH_AGENT_LOCAL_PID" 2>/dev/null || true
+    SSH_AGENT_LOCAL_PID=""
+  fi
+  local f
+  for f in "${SSH_AGENT_CLEANUP_FILES[@]}"; do rm -f "$f" 2>/dev/null || true; done
+  SSH_AGENT_CLEANUP_FILES=()
+}
+
 # --- 1. .env ---
 if [ ! -f .env ]; then
   echo "✗ Нет .env в корне. Выполните: cp .env.example .env — и заполните." >&2
   exit 1
 fi
 set -a; source ./.env; set +a
+
+# Приоритет источников переменных: реальный env (корневой .env) → apps/backend/.env.local
+# (gitignored, локальные креды S3/MinIO и т.п. — переиспользуем для деплоя без дублирования).
+if [ -f apps/backend/.env.local ]; then
+  echo "→ Подхватываю переопределения из apps/backend/.env.local (S3/MinIO и т.п.)"
+  set -a; source apps/backend/.env.local; set +a
+fi
 
 : "${SSH_HOST:?✗ SSH_HOST не задан в .env}"
 : "${SSH_USER:?✗ SSH_USER не задан в .env}"
@@ -96,10 +118,39 @@ if [ -x /c/Windows/System32/OpenSSH/ssh.exe ]; then
   SSHADD_BIN=/c/Windows/System32/OpenSSH/ssh-add.exe
 fi
 
-# Ключ в агенте? Если нет — ssh-add спросит passphrase ОДИН РАЗ (нативный prompt).
+# Ключ в агенте? Если нет — добавляем без tty: через SSH_ASKPASS (при заданном
+# SSH_KEY_PASSPHRASE в .env) либо интерактивно (fallback при наличии tty).
+# CI/агенты без tty: ssh-add </dev/tty падает — поэтому сначала askpass-путь.
 if ! "$SSHADD_BIN" -l >/dev/null 2>&1; then
-  echo "→ В ssh-agent нет ключей — добавляю $SSH_KEY (passphrase спросится один раз)..."
-  "$SSHADD_BIN" "$SSH_KEY" </dev/tty || { echo "✗ Не удалось загрузить ключ $SSH_KEY" >&2; exit 1; }
+  if [ -n "${SSH_KEY_PASSPHRASE:-}" ]; then
+    echo "→ В ssh-agent нет ключей — поднимаю локальный ssh-agent + SSH_ASKPASS (без tty)..."
+    # Локальный ssh-agent (гасится trap'ом на выходе)
+    eval "$(ssh-agent -s)" >/dev/null 2>&1
+    SSH_AGENT_LOCAL_PID="${SSH_AGENT_PID:-}"
+    # Askpass-хелпер: отдаёт passphrase, никогда не попадает в argv/на диск
+    ASKPASS_SCRIPT="$(mktemp)"
+    cat > "$ASKPASS_SCRIPT" <<'ASKPASS_EOF'
+#!/bin/sh
+printf '%s' "$SSH_KEY_PASSPHRASE"
+ASKPASS_EOF
+    chmod +x "$ASKPASS_SCRIPT"
+    SSH_AGENT_CLEANUP_FILES+=("$ASKPASS_SCRIPT")
+    SSH_KEY_PASSPHRASE="$SSH_KEY_PASSPHRASE" \
+      SSH_ASKPASS="$ASKPASS_SCRIPT" \
+      SSH_ASKPASS_REQUIRE=force \
+      DISPLAY=":0" \
+      "$SSHADD_BIN" "$SSH_KEY" </dev/null >/dev/null || {
+      echo "✗ Не удалось загрузить ключ $SSH_KEY через ssh-agent (SSH_ASKPASS)" >&2
+      exit 1
+    }
+  elif [ -t 0 ]; then
+    echo "→ В ssh-agent нет ключей — добавляю $SSH_KEY (passphrase спросится один раз)..."
+    "$SSHADD_BIN" "$SSH_KEY" </dev/tty || { echo "✗ Не удалось загрузить ключ $SSH_KEY" >&2; exit 1; }
+  else
+    echo "✗ Ключ не в агенте, нет tty и не задан SSH_KEY_PASSPHRASE в .env —" >&2
+    echo "  деплой из CI/агента невозможен. Задайте SSH_KEY_PASSPHRASE в .env." >&2
+    exit 1
+  fi
 else
   echo "→ ssh-agent уже содержит ключи — подключение без запроса passphrase."
 fi
@@ -144,7 +195,9 @@ tar --exclude=node_modules \
     --exclude=playwright-report \
     --exclude=test-results \
     --exclude=.env \
+    --exclude=.env.local \
     --exclude=.app.secrets \
+    --exclude=.app.s3 \
     --exclude='*.tsbuildinfo' \
     --exclude=deploy-vars.yml \
     -czf "$ARCHIVE_LOCAL" -C "$ROOT" .
@@ -166,6 +219,21 @@ export PROXY_DIR=$(eq "$PROXY_DIR")
 export SSH_HOST=$(eq "$SSH_HOST")
 EOF
 
+# Дополнительно прокидываемые переменные окружения (S3, PUBLIC_BASE_URL и т.п.)
+# прокидываем в deploy-env.sh отдельным циклом: значения из .env и
+# apps/backend/.env.local. Форк расширяет список через EXTRA_DEPLOY_ENV_VARS в .env.
+S3_ENV_VARS="S3_ENDPOINT S3_PUBLIC_URL S3_REGION S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY S3_KEY_PREFIX S3_FORCE_PATH_STYLE S3_UPLOAD_EXPIRES S3_DOWNLOAD_EXPIRES S3_CROPPED_SUBFOLDER S3_CROPPED_TTL_DAYS S3_IMAGE_MAX_DIM S3_PRESIGN_VARIANT_EXPIRES"
+EXTRA_ENV_VARS="PUBLIC_BASE_URL MOCK_TELEGRAM_POST_URL ${EXTRA_DEPLOY_ENV_VARS:-}"
+EXTRA_ENV_KEYS=""
+for _v in $S3_ENV_VARS $EXTRA_ENV_VARS; do
+  case " $EXTRA_ENV_KEYS " in
+    *" $_v "*) ;;
+    *) EXTRA_ENV_KEYS="$EXTRA_ENV_KEYS $_v" ;;
+  esac
+  echo "export $_v=$(eq "${!_v:-}")" >> "$DEPLOY_ENV_LOCAL"
+done
+echo "export EXTRA_ENV_KEYS=\"$EXTRA_ENV_KEYS\"" >> "$DEPLOY_ENV_LOCAL"
+
 # Windows sftp.exe не понимает MSYS-пути (/tmp/...) — конвертируем в Windows-путь.
 ARCHIVE_LOCAL_WIN="$(cygpath -m "$ARCHIVE_LOCAL" 2>/dev/null || echo "$ARCHIVE_LOCAL")"
 DEPLOY_ENV_WIN="$(cygpath -m "$DEPLOY_ENV_LOCAL" 2>/dev/null || echo "$DEPLOY_ENV_LOCAL")"
@@ -176,6 +244,9 @@ echo "→ Загрузка архива + env на сервер..."
 put "$ARCHIVE_LOCAL_WIN" "$ARCHIVE_PATH"
 put "$DEPLOY_ENV_WIN" "/opt/.${PROJECT_NAME}-deploy-env.sh"
 SFTP_EOF
+
+# Файл содержит пароли/ключи — только владелец
+"${SSH_CMD[@]}" "chmod 600 '/opt/.${PROJECT_NAME}-deploy-env.sh'"
 
 # --- 6. Распаковка + генерация секретов + ansible-playbook ---
 echo "→ Распаковка, генерация .app.secrets, запуск ansible-playbook..."
@@ -194,6 +265,31 @@ mkdir -p "$PROJECT_DIR"
 echo "→ Распаковка архива в $PROJECT_DIR..."
 tar -xzf "$ARCHIVE_PATH" -C "$PROJECT_DIR"
 cd "$PROJECT_DIR"
+
+# --- S3: персистентность между деплоями (.app.s3-кеш) ---
+# Если в текущем деплое полный набор S3_* пришёл — кешируем в .app.s3
+# (umask 077, shell-экранирование). Если НЕ пришёл — переиспользуем кеш,
+# чтобы повторный деплой без S3-переменных не затирал настроенный S3.
+S3_ENV_VARS="S3_ENDPOINT S3_PUBLIC_URL S3_REGION S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY S3_KEY_PREFIX S3_FORCE_PATH_STYLE S3_UPLOAD_EXPIRES S3_DOWNLOAD_EXPIRES S3_CROPPED_SUBFOLDER S3_CROPPED_TTL_DAYS S3_IMAGE_MAX_DIM S3_PRESIGN_VARIANT_EXPIRES"
+S3_REQUIRED_VARS="S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY"
+S3_COMPLETE=1
+for _v in $S3_REQUIRED_VARS; do
+  [ -n "${!_v:-}" ] || S3_COMPLETE=0
+done
+if [ "$S3_COMPLETE" = "1" ]; then
+  umask 077
+  : > .app.s3
+  for _v in $S3_ENV_VARS; do
+    printf 'export %s=%q\n' "$_v" "${!_v:-}" >> .app.s3
+  done
+  echo "→ S3-переменные закешированы в $PROJECT_DIR/.app.s3"
+elif [ -f .app.s3 ]; then
+  echo "→ S3_* в текущем деплое не заданы — переиспользую кеш .app.s3"
+  # shellcheck disable=SC1091
+  set -a; source ./.app.s3; set +a
+else
+  echo "→ S3 не настроен и кеша .app.s3 нет — приложение стартует без S3"
+fi
 
 # --- Авто-генерация .app.secrets (db_password, jwt_secret), если нет ---
 if [ ! -f .app.secrets ]; then
@@ -223,6 +319,17 @@ admin_password: "$ADMIN_PASSWORD"
 db_username: "$PROJECT_NAME"
 db_name: "${PROJECT_NAME}_db"
 YML
+# --- Дополнительно прокидываемые переменные окружения (extra_env) ---
+# Форк добавляет переменную в .env (EXTRA_DEPLOY_ENV_VARS) — она уезжает
+# в docker/env как есть: vars.yml: extra_env: { KEY: "value" } → env.j2 рендерит "KEY=value".
+# Экранирование значений для YAML-строки в двойных кавычках (\ и ").
+yml_str() { local s="${2//\\/\\\\}"; s="${s//\"/\\"}"; printf '%s: "%s"\n' "$1" "$s"; }
+cat >> ansible/vars.yml <<YML
+extra_env:
+YML
+for _v in ${EXTRA_ENV_KEYS:-}; do
+  yml_str "$_v" "${!_v:-}" | sed 's/^/  /' >> ansible/vars.yml
+done
 cat .app.secrets >> ansible/vars.yml
 chmod 600 ansible/vars.yml
 
@@ -232,9 +339,15 @@ echo "→ ansible-playbook playbook.yml -e @vars.yml"
 ansible-playbook playbook.yml -e @vars.yml
 
 echo "✅ Деплой завершён."
+
+# Транзитные файлы с секретами удаляем: они пересоздаются при каждом деплое.
+# Остаются только персистентные 0600-кешы .app.secrets/.app.s3 (нужны переиспользования секретов).
+rm -f "/opt/.${PROJECT_NAME}-deploy-env.sh" "$PROJECT_DIR/ansible/vars.yml"
 REMOTE_DEPLOY
 
 # --- 7. Финальная проверка ---
+# Транзитный env-файл с паролями на локальной машине тоже удаляем.
+rm -f "$DEPLOY_ENV_LOCAL"
 echo
 echo "→ Проверка: https://$DOMAIN/api/users/count"
 echo "  (сертификат может выпускаться до ~1 мин после первого запуска)"

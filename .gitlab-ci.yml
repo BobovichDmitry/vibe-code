@@ -85,6 +85,33 @@ build:docker:
     - if: $CI_COMMIT_TAG
 
 # =============================================
+# CI-образ для деплой-джоб (ubuntu + sops/yq/ssh внутри).
+# sops/yq скачиваются с GitHub ЗДЕСЬ, а не в runtime деплой-джобы:
+# DNS к GitHub на раннере периодически флапает — деплои падали.
+# Пересборка: вручную или при изменении docker/Dockerfile.ci-deploy.
+# =============================================
+build:ci-image:
+  stage: build
+  image: docker:27-cli
+  services:
+    - name: docker:27-dind
+      alias: docker
+      command: ["--tls=false"]
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" "$CI_REGISTRY"
+  script:
+    - docker build --pull -f docker/Dockerfile.ci-deploy -t "$CI_REGISTRY_IMAGE/ci-deploy:latest" .
+    - docker push "$CI_REGISTRY_IMAGE/ci-deploy:latest"
+  rules:
+    # Автопересборка при изменении рецепта образа...
+    - changes:
+        - docker/Dockerfile.ci-deploy
+    # ...и всегда доступна вручную (кнопка Run pipeline).
+    - when: manual
+    # manual не должен останавливать пайплайн, если не запущен
+  allow_failure: true
+
+# =============================================
 # Deploy — CI-деплой из Registry (без сборки на сервере)
 # =============================================
 # Джоба передаёт SOPS_AGE_KEY_<ENV> и DEPLOY_ENV в docker/deploy_ci.sh:
@@ -95,7 +122,9 @@ build:docker:
 # (protected + masked) — НЕ хардкодим их здесь.
 
 .base_deploy_ci:
-  image: ubuntu:24.04
+  image: $CI_REGISTRY_IMAGE/ci-deploy:latest
+  # ^ sops/yq/ssh внутри (docker/Dockerfile.ci-deploy): без сетевых загрузок
+  #   в runtime джобы (DNS к GitHub периодически флапает).
   variables:
     # Нужны ansible/ и docker/ из репо (архив исходников для сервера).
     # Образы для деплоя пиннятся тегом $CI_COMMIT_SHORT_SHA — запускается
@@ -110,6 +139,8 @@ deploy:test:
   resource_group: deploy-test
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    # Развиваем test-стенд и из develop (не только из default-ветки)
+    - if: $CI_COMMIT_BRANCH == "develop"
   script:
     # Age-ключ не задан → деплой ПРОПУСКАЕТСЯ (джоба зелёная), а не падает.
     - |

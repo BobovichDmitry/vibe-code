@@ -15,7 +15,9 @@ services:
       - "443:443"
     volumes:
       - nginx_conf:/etc/nginx/conf.d
-      - nginx_vhost:/etc/nginx/vhost.d
+      # vhost.d — с хоста ({{ proxy_dir }}/vhost.d), чтобы кастомные опции
+      # (напр. client_max_body_size) задавались файлами на диске.
+      - {{ proxy_dir }}/vhost.d:/etc/nginx/vhost.d:ro
       - nginx_html:/usr/share/nginx/html
       - nginx_certs:/etc/nginx/certs
       - /var/run/docker.sock:/tmp/docker.sock:ro
@@ -42,7 +44,6 @@ services:
 
 volumes:
   nginx_conf:
-  nginx_vhost:
   nginx_html:
   nginx_certs:
   acme_certs:

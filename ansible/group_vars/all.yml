@@ -42,11 +42,8 @@ brand_favicon_url: "/favicon.svg"
 
 # --- Let's Encrypt ---
 letsencrypt_email: "admin@example.com"
-
-# --- Производные (не менять вручную) ---
-# CORS = домен за nginx-proxy (клиентский fetch браузера).
-cors_origin: "https://{{ domain }}"
-
-# --- Docker compose файлы ---
-prod_compose_file: "docker-compose.prod.yml"
-proxy_compose_file: "compose-proxy.yml"
+# --- Дополнительно прокидываемые переменные окружения (generic pass-through) ---
+# Наполняется деплой-скриптами (deploy.sh / deploy_ci.sh): любая переменная
+# из .env / .envs/<env>/*.yaml (кроме базовых ключей деплоя) попадает в
+# docker/env как "KEY=value". Форк управляет окружением из git.
+extra_env: {}

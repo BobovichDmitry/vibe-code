@@ -1,6 +1,11 @@
 # Несекретные переменные окружения test-стенда (деплой).
 # Мёржатся с secret.enc.yaml в docker/deploy_ci.sh (secret перекрывает public).
 # Ключи — ВЕРХНИМ регистром: они экспортируются как переменные окружения.
+#
+# GENERIC PASS-THROUGH: любая переменная, добавленная в этот файл (или в
+# secret.enc.yaml), автоматически уезжает на сервер в docker/env — править
+# деплой-скрипты не нужно. Исключение — базовые ключи деплоя
+# (SSH_*, DEPLOY_*, DOMAIN, PROJECT_*, BRAND_*, ADMIN_*, PROXY_DIR, ...).
 SSH_HOST: 1.2.3.4
 SSH_USER: root
 SSH_PORT: 22
@@ -13,3 +18,15 @@ PROJECT_NAME: my-project-test
 BRAND_TITLE: VibeSetup UI
 BRAND_FAVICON_URL: /favicon.svg
 ADMIN_LOGIN: admin
+
+# --- Примеры дополнительных переменных (generic pass-through) ---
+# S3 / объектное хранилище. На сервере кешируются в <project_dir>/.app.s3:
+# деплой без S3_* не затирает настройку. SECRET_KEY держите в secret.enc.yaml.
+# S3_ENDPOINT: https://s3.example.com
+# S3_PUBLIC_URL: https://s3.example.com
+# S3_BUCKET: my-bucket
+# S3_ACCESS_KEY: ...
+# S3_KEY_PREFIX: uploads/
+# S3_FORCE_PATH_STYLE: "true"
+# Публичный base URL (внешние ссылки: вебхуки, redirect'ы):
+# PUBLIC_BASE_URL: https://example.test

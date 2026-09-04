@@ -93,8 +93,9 @@ if ! command -v ssh >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
 fi
 
 # --- 1б. Зависимости раннера: sops и yq (binaries, официальные release-сборки) ---
-# В CI-образе (ubuntu:24.04) их нет — скачиваем в локальный bin-dir. На shell-раннере
-# (или при локальном запуске) они уже должны быть установлены (brew/apt/ручной).
+# Порядок поиска: уже установлены → /opt/binaries (несколько форматов путей; раннер
+# может быть без интернет-доступа) → скачивание с ретраями (DNS/сеть к GitHub
+# периодически флапают — без ретраиев падают деплои).
 ensure_sops_yq() {
   local TOOL_BIN="$(mktemp -d /tmp/deploy-tools.XXXXXX)"
   export PATH="$TOOL_BIN:$PATH"
@@ -106,17 +107,54 @@ ensure_sops_yq() {
     Darwin_arm64)  local arch="darwin.arm64" ;;
     *) echo "✗ sops/yq: непонятная платформа '$OS_ARCH' — установи sops и yq вручную (https://github.com/getsops/sops, https://github.com/mikefarah/yq)" >&2; exit 1 ;;
   esac
+  # Скачивание с ретраями: DNS/сеть к GitHub периодически флапают
+  dl_with_retry() {
+    local url="$1" dest="$2" i
+    for i in 1 2 3; do
+      if curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15 "$url" -o "$dest" && [ -s "$dest" ]; then
+        return 0
+      fi
+      echo "→ Попытка $i скачать $(basename "$dest") не удалась — retry..." >&2
+      sleep 3
+    done
+    echo "✗ Не удалось скачать $url после 3 попыток" >&2
+    return 1
+  }
+  # Поиск заранее положенных бинарников на /opt/binaries
+  find_preinstalled() {
+    local name="$1" cand
+    for cand in \
+      "/opt/binaries/$name" \
+      "/opt/binaries/$name.$(uname -m)" \
+      "/opt/binaries/$(uname -m)/$name" \
+      "/opt/binaries/$name-$(uname -s | tr '[:upper:]' '[:lower:]')"; do
+      if [ -x "$cand" ]; then
+        echo "$cand"
+        return 0
+      fi
+    done
+    return 1
+  }
+  local found
   if ! command -v sops >/dev/null 2>&1; then
-    echo "→ Установка sops (v3.9.4)..."
-    curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.${arch}" -o "$TOOL_BIN/sops" && chmod +x "$TOOL_BIN/sops"
+    if found="$(find_preinstalled sops)"; then
+      ln -s "$found" "$TOOL_BIN/sops"; echo "→ sops: использую $found"
+    else
+      echo "→ Установка sops (v3.9.4)..."
+      dl_with_retry "https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.${arch}" "$TOOL_BIN/sops" && chmod +x "$TOOL_BIN/sops"
+    fi
   fi
   if ! command -v yq >/dev/null 2>&1; then
-    echo "→ Установка yq (v4.47.2)..."
-    local os="${arch%%.*}"
-    local yq_arch="$(uname -m)"
-    [ "$yq_arch" = "x86_64" ] && yq_arch="amd64"
-    [ "$yq_arch" = "aarch64" ] && yq_arch="arm64"
-    curl -fsSL "https://github.com/mikefarah/yq/releases/download/v4.47.2/yq_${os}_${yq_arch}" -o "$TOOL_BIN/yq" && chmod +x "$TOOL_BIN/yq"
+    if found="$(find_preinstalled yq)"; then
+      ln -s "$found" "$TOOL_BIN/yq"; echo "→ yq: использую $found"
+    else
+      echo "→ Установка yq (v4.47.2)..."
+      local os="${arch%%.*}"
+      local yq_arch="$(uname -m)"
+      [ "$yq_arch" = "x86_64" ] && yq_arch="amd64"
+      [ "$yq_arch" = "aarch64" ] && yq_arch="arm64"
+      dl_with_retry "https://github.com/mikefarah/yq/releases/download/v4.47.2/yq_${os}_${yq_arch}" "$TOOL_BIN/yq" && chmod +x "$TOOL_BIN/yq"
+    fi
   fi
   command -v sops >/dev/null 2>&1 || { echo "✗ sops не установлен" >&2; exit 1; }
   command -v yq >/dev/null 2>&1  || { echo "✗ yq не установлен" >&2; exit 1; }
@@ -140,9 +178,29 @@ SECRET_DATA="$(sops -d --input-type yaml --output-type yaml "$SECRET_ENC")"
 
 # Мерж secret (перекрывает) + public → export UPPERCASE-ключей как переменных окружения
 MERGED="$(yq ea -o p '. as $item ireduce ({}; . * $item)' <(echo "$SECRET_DATA") <(cat "$PUBLIC_YML"))"
+# Формат вывода yq -o p: строки "KEY = value" (пробелы вокруг "=").
+# Пропускаем пустые строки и комментарии; обёрнутые в кавычки значения разворачиваем.
+# ALL_DEPLOY_KEYS — ВСЕ ключи из .envs/<env>/ (они и есть источник правды для деплоя:
+# форк добавляет переменную в public.yaml/secret.enc.yaml — она едет на сервер как есть).
+ALL_DEPLOY_KEYS=""
 while IFS= read -r line; do
-  [ -z "$line" ] && continue
-  export "$line"
+  case "$line" in
+    ''|'#'*) continue ;;
+  esac
+  if [[ "$line" == *' = '* ]]; then
+    key="${line%% = *}"; val="${line#* = }"
+  elif [[ "$line" == *=* ]]; then
+    key="${line%%=*}"; val="${line#*=}"
+  else
+    continue
+  fi
+  # yq обёрнул значение в кавычки (напр. KEY = "va lue") — снимаем их
+  if [ ${#val} -ge 2 ] && [ "${val:0:1}" = '"' ] && [ "${val: -1}" = '"' ]; then
+    val="${val:1:${#val}-2}"
+  fi
+  export "$key=$val"
+  ALL_DEPLOY_KEYS="$ALL_DEPLOY_KEYS $key"
+
 done <<< "$MERGED"
 
 BUNDLE_DIR="$(mktemp -d /tmp/deploy-ci.XXXXXX)"
@@ -243,7 +301,9 @@ tar --exclude=node_modules \
     --exclude=playwright-report \
     --exclude=test-results \
     --exclude=.env \
+    --exclude=.env.local \
     --exclude=.app.secrets \
+    --exclude=.app.s3 \
     --exclude=apps \
     --exclude=e2e \
     --exclude=docs \
@@ -272,11 +332,28 @@ export PROXY_DIR=$(eq "$PROXY_DIR")
 export SSH_HOST=$(eq "$SSH_HOST")
 EOF
 
+# Прокидываем на сервер ВСЕ переменные из .envs/$DEPLOY_ENV (merged yq) + список
+# «дополнительно прокидываемых» ключей EXTRA_ENV_KEYS. Всё, что форк закоммитил
+# в public.yaml/secret.enc.yaml, едет на сервер без правок скрипта.
+# BASE_DEPLOY_KEYS обрабатываются отдельными полями vars.yml — в extra_env не дублируем.
+BASE_DEPLOY_KEYS="DOMAIN LETSENCRYPT_EMAIL BRAND_TITLE BRAND_FAVICON_URL ADMIN_LOGIN ADMIN_PASSWORD PROJECT_NAME PROJECT_DIR ARCHIVE_PATH PROXY_DIR SSH_HOST SSH_USER SSH_PORT DEPLOY_SSH_KEY DEPLOY_SKIP_HOST_KEY_CHECK"
+EXTRA_ENV_KEYS=""
+for _v in $ALL_DEPLOY_KEYS; do
+  case " $BASE_DEPLOY_KEYS " in
+    *" $_v "*) continue ;;
+  esac
+  EXTRA_ENV_KEYS="$EXTRA_ENV_KEYS $_v"
+done
+for _v in $ALL_DEPLOY_KEYS; do
+  echo "export $_v=$(eq "${!_v:-}")" >> "$DEPLOY_ENV_LOCAL"
+done
+echo "export EXTRA_ENV_KEYS=\"$EXTRA_ENV_KEYS\"" >> "$DEPLOY_ENV_LOCAL"
+
 echo "→ Загрузка архива + env на сервер..."
 # Загрузка через ssh stdin (binary-safe) — не через sftp: sftp ломается на Windows
 # (Git Bash: exec /usr/bin/ssh not found), а на CI-раннере sftp не нужен.
 "${SSH_CMD[@]}" "cat > '$ARCHIVE_PATH'" < "$ARCHIVE_LOCAL"
-"${SSH_CMD[@]}" "cat > '/opt/.${PROJECT_NAME}-deploy-env.sh'" < "$DEPLOY_ENV_LOCAL"
+"${SSH_CMD[@]}" "cat > '/opt/.${PROJECT_NAME}-deploy-env.sh' && chmod 600 '/opt/.${PROJECT_NAME}-deploy-env.sh'" < "$DEPLOY_ENV_LOCAL"
 
 # --- 6. Логин в Registry ВРЕМЕННЫМ токеном (token идёт через stdin, не в argv) ---
 # Только если заданы CI_REGISTRY и CI_JOB_TOKEN (в CI — всегда). Ручной тест-запуск
@@ -309,6 +386,31 @@ echo "→ Распаковка архива в $PROJECT_DIR..."
 tar -xzf "$ARCHIVE_PATH" -C "$PROJECT_DIR"
 cd "$PROJECT_DIR"
 
+# --- S3: персистентность между деплоями (.app.s3-кеш) ---
+# Если в текущем деплое полный набор S3_* пришёл — кешируем в .app.s3
+# (umask 077, shell-экранирование). Если НЕ пришёл — переиспользуем кеш,
+# чтобы повторный деплой без S3-переменных не затирал настроенный S3.
+S3_ENV_VARS="S3_ENDPOINT S3_PUBLIC_URL S3_REGION S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY S3_KEY_PREFIX S3_FORCE_PATH_STYLE S3_UPLOAD_EXPIRES S3_DOWNLOAD_EXPIRES S3_CROPPED_SUBFOLDER S3_CROPPED_TTL_DAYS S3_IMAGE_MAX_DIM S3_PRESIGN_VARIANT_EXPIRES"
+S3_REQUIRED_VARS="S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY S3_SECRET_KEY"
+S3_COMPLETE=1
+for _v in $S3_REQUIRED_VARS; do
+  [ -n "${!_v:-}" ] || S3_COMPLETE=0
+done
+if [ "$S3_COMPLETE" = "1" ]; then
+  umask 077
+  : > .app.s3
+  for _v in $S3_ENV_VARS; do
+    printf 'export %s=%q\n' "$_v" "${!_v:-}" >> .app.s3
+  done
+  echo "→ S3-переменные закешированы в $PROJECT_DIR/.app.s3"
+elif [ -f .app.s3 ]; then
+  echo "→ S3_* в текущем деплое не заданы — переиспользую кеш .app.s3"
+  # shellcheck disable=SC1091
+  set -a; source ./.app.s3; set +a
+else
+  echo "→ S3 не настроен и кеша .app.s3 нет — приложение стартует без S3"
+fi
+
 # --- .app.secrets (db_password, jwt_secret) — генерируются один раз ---
 if [ ! -f .app.secrets ]; then
   DBPW="$(openssl rand -hex 18)"
@@ -337,6 +439,18 @@ admin_password: "$ADMIN_PASSWORD"
 db_username: "$PROJECT_NAME"
 db_name: "${PROJECT_NAME}_db"
 YML
+# --- Дополнительно прокидываемые переменные окружения (extra_env) ---
+# Любая переменная, закоммиченная форком в .envs/<env>/{public,secret}.yaml
+# (кроме базовых ключей деплоя — они отдельные поля vars.yml), уезжает в docker/env
+# как есть: vars.yml: extra_env: { KEY: "value" } → env.j2 рендерит "KEY=value".
+# Экранирование значений для YAML-строки в двойных кавычках (\ и ").
+yml_str() { local s="${2//\\/\\\\}"; s="${s//\"/\\"}"; printf '%s: "%s"\n' "$1" "$s"; }
+cat >> ansible/vars.yml <<YML
+extra_env:
+YML
+for _v in ${EXTRA_ENV_KEYS:-}; do
+  yml_str "$_v" "${!_v:-}" | sed 's/^/  /' >> ansible/vars.yml
+done
 cat .app.secrets >> ansible/vars.yml
 chmod 600 ansible/vars.yml
 
@@ -347,6 +461,10 @@ ansible-playbook playbook.yml -e @vars.yml \
   -e "frontend_image=$FRONTEND_IMAGE backend_image=$BACKEND_IMAGE"
 
 echo "✅ CI-деплой завершён."
+
+# Транзитные файлы с секретами удаляем: они пересоздаются при каждом деплое.
+# Остаются только персистентные 0600-кешы .app.secrets/.app.s3 (нужны переиспользования секретов).
+rm -f "/opt/.${PROJECT_NAME}-deploy-env.sh" "$PROJECT_DIR/ansible/vars.yml"
 REMOTE_DEPLOY
 
 # --- 8. Логаут из Registry (токен временный) — best-effort ---
@@ -356,6 +474,8 @@ if [ "$REGISTRY_LOGGED_IN" = "1" ]; then
 fi
 
 # --- 9. Финальная проверка ---
+# Транзитный env-файл с паролями на локальной машине тоже удаляем.
+rm -f "$DEPLOY_ENV_LOCAL"
 echo
 echo "→ Проверка: https://$DOMAIN/api/users/count"
 echo "  (сертификат может выпускаться до ~1 мин после первого запуска)"

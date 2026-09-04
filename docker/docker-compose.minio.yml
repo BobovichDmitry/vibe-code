@@ -1,0 +1,36 @@
+# =============================================================================
+# Локальный MinIO для dev-тестирования S3-функциональности.
+#
+# Запуск (из корня репо):
+#   docker compose -f docker/docker-compose.minio.yml up -d
+#
+# Консоль:  http://localhost:9001  (root / minioadmin123)
+# API (S3): http://localhost:9000
+#
+# Креды для apps/backend/.env.local:
+#   S3_ENDPOINT=http://localhost:9000
+#   S3_PUBLIC_URL=http://localhost:9000
+#   S3_REGION=us-east-1
+#   S3_BUCKET=my-local-bucket
+#   S3_ACCESS_KEY=minioadmin
+#   S3_SECRET_KEY=minioadmin123
+#   S3_FORCE_PATH_STYLE=true
+# =============================================================================
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+volumes:
+  minio_data:

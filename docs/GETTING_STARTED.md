@@ -250,6 +250,17 @@ project/
 | `S3_UPLOAD_EXPIRES` | `600` | Срок действия presigned PUT, сек |
 | `S3_DOWNLOAD_EXPIRES` | `86400` | Срок действия presigned GET, сек |
 | `S3_FORCE_PATH_STYLE` | `true` | `forcePathStyle` (true для MinIO/самохоста) |
+| `S3_CROPPED_SUBFOLDER` | (empty) | Подпапка в бакете для кропов |
+| `S3_CROPPED_TTL_DAYS` | (empty) | TTL кропов в днях |
+| `S3_IMAGE_MAX_DIM` | (empty) | Максимальная сторона изображения (px) |
+| `S3_PRESIGN_VARIANT_EXPIRES` | (empty) | Срок действия presigned-URL вариантов, сек |
+
+> **Generic pass-through в деплое**: любая переменная, добавленная форком в
+> `.envs/<env>/public.yaml` / `secret.enc.yaml` (ВЕРХНИМ регистром), автоматически
+> попадает в `docker/env` на сервере (`extra_env` → `env.j2` — без правки
+> деплой-скриптов/ansible). В GitLab CI задаётся только age-ключ
+> (`SOPS_AGE_KEY_TEST`/`SOPS_AGE_KEY_PRODUCTION`). Подробности —
+> [`deployment.md`](deployment.md) и [`areas/ci-deployment.md`](areas/ci-deployment.md).
 
 ### Frontend (`apps/frontend/.env` + `.env.local`)
 
@@ -264,6 +275,17 @@ project/
 ### .env.local
 
 `.env.local` (не под git) переопределяет `.env` — порты (`PORT` у **обоих сервисов**) и локальные креды S3/MinIO. Шаблоны: `apps/backend/.env.local.example` (PORT, S3_*) и `apps/frontend/.env.local.example` (PORT, NUXT_*). Создаётся рядом с `.env`, игнорируется git (`.env.local`, `.env.*.local`). При смене порта backend обновите `NUXT_API_BASE` у frontend (и наоборот — `CORS_ORIGIN` у backend). Внешнее окружение (прод-контейнер) имеет наивысший приоритет. Полный список `S3_*` — в корневом `AGENTS.md`.
+
+### Локальный MinIO (dev-тестирование S3)
+
+Для локального тестирования S3-функциональности поднимите MinIO:
+
+```bash
+docker compose -f docker/docker-compose.minio.yml up -d
+```
+
+S3 API — `http://localhost:9000`, консоль — `http://localhost:9001`
+(`minioadmin` / `minioadmin123`). Креды подставьте в `apps/backend/.env.local`.
 
 ### E2E
 

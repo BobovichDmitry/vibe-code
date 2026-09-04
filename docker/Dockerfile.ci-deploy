@@ -1,0 +1,52 @@
+# =============================================================================
+# Dockerfile.ci-deploy — образ CI-раннера для деплой-джоб (deploy:*, deploy_ci.sh).
+#
+# В отличие от голого ubuntu:24.04, внутри уже есть:
+#   - ssh-клиент (openssh-client) — подключение к целевому серверу;
+#   - sops + yq — расшифровка/мерж .envs/<env>/ (без загрузок из GitHub в runtime
+#     джобы: DNS к GitHub на раннере периодически флапает и падали деплои).
+#
+# Сборка и пуш — джобой build:ci-image (вручную или при изменении этого файла):
+#   docker build -f docker/Dockerfile.ci-deploy -t "$CI_REGISTRY_IMAGE/ci-deploy:latest" .
+#
+# x86_64 и arm64: сборка выполняется на архитектуре раннера (multi-arch не нужен —
+# деплой-джобы бегают на той же архитектуре, что и build:ci-image).
+# =============================================================================
+
+FROM ubuntu:24.04
+
+ARG SOPS_VERSION=3.9.4
+ARG YQ_VERSION=4.47.2
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        openssh-client \
+        ca-certificates \
+        curl \
+        bash \
+        python3 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Целевая архитектура берётся из архитектуры сборочного хоста
+# (CI-раннер GitLab: shell `uname -m`; на arm64 соберётся arm64-бинарник).
+ARG TARGETARCH
+RUN set -eux; \
+    case "$(uname -m)" in \
+        x86_64)  arch="amd64" ;; \
+        aarch64) arch="arm64" ;; \
+        *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 3 --retry-delay 2 \
+        "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${arch}" \
+        -o /usr/local/bin/sops; \
+    chmod +x /usr/local/bin/sops; \
+    curl -fsSL --retry 3 --retry-delay 2 \
+        "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_${arch}" \
+        -o /usr/local/bin/yq; \
+    chmod +x /usr/local/bin/yq
+
+WORKDIR /work
+
+CMD ["bash"]

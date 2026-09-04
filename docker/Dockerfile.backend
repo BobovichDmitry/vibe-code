@@ -37,6 +37,10 @@ ENV PORT=3001
 # Каталог под SQLite (если DB_TYPE=sqlite).
 RUN mkdir -p /app/apps/backend/data
 
+# ffmpeg: обработка медиа в проде (в dev используется системный ffmpeg).
+# Без него медиа-обработка падает на машине, где локально всё работало.
+RUN apk add --no-cache ffmpeg
+
 COPY package.json package-lock.json ./
 COPY apps/frontend/package.json ./apps/frontend/
 COPY apps/backend/package.json ./apps/backend/

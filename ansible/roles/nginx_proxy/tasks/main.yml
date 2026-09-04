@@ -9,6 +9,27 @@
     state: directory
     mode: "0755"
 
+# nginx-proxy по умолчанию ограничивает client_max_body_size 1M —
+# загрузка файлов >1M блокируется (413). Поднимаем лимит для всех vhost'ов.
+- name: Создать директорию vhost.d
+  ansible.builtin.file:
+    path: "{{ proxy_dir }}/vhost.d"
+    state: directory
+    mode: "0755"
+
+- name: Разрешить загрузку файлов до 500M (default vhost, client_max_body_size)
+  ansible.builtin.copy:
+    content: "client_max_body_size 500M;\n"
+    dest: "{{ proxy_dir }}/vhost.d/default"
+    mode: "0644"
+  register: nginx_vhost_default
+
+# docker-gen не следит за файлами в vhost.d — reload нужен вручную при изменении.
+- name: Перезагрузить конфигурацию nginx-proxy при изменении vhost.d/default
+  ansible.builtin.command: docker exec nginx-proxy nginx -s reload
+  when: nginx_vhost_default is changed
+  changed_when: true
+
 - name: Проверить, существует ли контейнер nginx-proxy
   ansible.builtin.command: docker ps -a --filter name=nginx-proxy --format '{%raw%}{{.Names}}{%endraw%}'
   register: nginx_proxy_exists

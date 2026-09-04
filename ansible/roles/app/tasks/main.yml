@@ -65,6 +65,42 @@
   register: app_up
   changed_when: "'Started' in app_up.stderr or 'Creating' in app_up.stderr"
 
+# --- Синхронизация db_password (28P01): PostgreSQL-роль создаётся при первом
+# запуске контейнера с паролем из POSTGRES_PASSWORD. Смена db_password в
+# vars.yml/.app.secrets НЕ меняет роль в persistent volume — backend получает
+# 28P01 и не поднимается. Поэтому: дожидаемся готовности PG, idempotent-но
+# подтягиваем пароль роли и перезапускаем backend.
+- name: Дождаться готовности PostgreSQL (pg_isready)
+  ansible.builtin.command:
+    docker compose -p {{ project_name }} -f {{ prod_compose_file }} exec -T postgres
+      pg_isready -U {{ db_username }} -d {{ db_name }}
+  args:
+    chdir: "{{ project_dir }}/docker"
+  register: pg_ready
+  until: pg_ready.rc == 0
+  retries: 30
+  delay: 2
+  changed_when: false
+
+- name: Синхронизировать пароль роли PostgreSQL с db_password (idempotent)
+  ansible.builtin.shell: |
+    docker compose -p {{ project_name }} -f {{ prod_compose_file }} exec -T postgres \
+      psql -U {{ db_username }} -d {{ db_name }} <<'SQL'
+    ALTER USER "{{ db_username }}" WITH PASSWORD '{{ db_password | regex_replace("'", "''") }}';
+    SQL
+  args:
+    chdir: "{{ project_dir }}/docker"
+  register: db_password_sync
+  changed_when: false
+  no_log: true
+
+- name: Перезапустить backend после синхронизации пароля БД
+  ansible.builtin.command: docker compose -p {{ project_name }} -f {{ prod_compose_file }} restart backend
+  args:
+    chdir: "{{ project_dir }}/docker"
+  when: db_password_sync is changed
+  changed_when: true
+
 - name: Вывести результат deploy
   ansible.builtin.debug:
     msg:

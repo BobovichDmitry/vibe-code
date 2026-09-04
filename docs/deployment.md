@@ -18,17 +18,21 @@ Nuxt проксирует `/api/**` → `http://backend:3001` через `routeR
 - `docker/Dockerfile.frontend` — deps → `nuxt build` → production-образ
   (Nitro-сервер, `node .output/server/index.mjs`). Порт 3000, `NITRO_HOST=0.0.0.0`.
 - `docker/Dockerfile.backend` — deps → `nest build` → production-образ
-  (`node apps/backend/dist/main.js`). Порт 3001.
+  (`node apps/backend/dist/main.js`). Порт 3001. В prod-этап добавлен **ffmpeg**
+  (`apk add --no-cache ffmpeg`) — обработка медиа в проде (в dev используется
+  системный ffmpeg).
+- `docker/Dockerfile.ci-deploy` — образ для CI-деплой-джоб (ubuntu:24.04 +
+  предустановленные `sops`, `yq`, `ssh`; `linux/amd64` + `linux/arm64`).
+  Собирается джобой `build:ci-image` и пушится как
+  `$CI_REGISTRY_IMAGE/ci-deploy:latest` — деплой-джобы не качают бинарники
+  по сети при каждом запуске.
 - Старый `docker/Dockerfile` (один образ, Nest раздавал статику) — **удалён**.
 
 ### Что копируется в production
 
-| Источник | Путь в контейнере |
-|----------|------------------|
-| backend build | `apps/backend/dist/` (включая `dist/migrations/*.js`) |
-| frontend build | `apps/frontend/.output/` (Nitro server + chunks) |
-
-**Важно**: `apps/backend/.env` **не** копируется — env переопределяется через
+Backend: `apps/backend/dist/` (включая `dist/migrations/*.js`);
+frontend: `apps/frontend/.output/` (Nitro server + chunks).
+**Важно**: `apps/backend/.env` **не** копируется — env задаётся через
 `env_file` в docker-compose / `NUXT_*` env в frontend.
 
 ## Docker Compose
@@ -55,10 +59,9 @@ docker compose -f docker-compose.prod.yml up -d --build
 - `backend` — без `VIRTUAL_HOST`, без проброса порта, внутренняя сеть.
 - `postgres` — без проброса 5432.
 
-При старте backend сам создаёт `DB_DATABASE`, если её нет (том postgres мог быть
-проинициализирован с другим именем — переименование проекта, старый деплой;
-раньше был бы `FATAL: database "X" does not exist`). Нужно право `CREATEDB` у
-`DB_USERNAME` (в шаблоне `POSTGRES_USER` — superuser). См. `docs/areas/database-structure.md`.
+При старте backend сам создаёт `DB_DATABASE`, если её нет (нужно право
+`CREATEDB` у `DB_USERNAME`; в шаблоне `POSTGRES_USER` — superuser).
+См. `docs/areas/database-structure.md`.
 
 ### E2E tests (`docker-compose.e2e.yml`)
 
@@ -67,6 +70,17 @@ cd docker
 docker compose -f docker-compose.e2e.yml up e2e
 # Playwright UI: http://localhost:8080
 ```
+
+### Локальный MinIO (dev-тестирование S3) (`docker-compose.minio.yml`)
+
+```bash
+docker compose -f docker/docker-compose.minio.yml up -d
+```
+
+S3-совместимое хранилище для локальной разработки: **API** `http://localhost:9000`,
+**консоль** `http://localhost:9001` (`minioadmin` / `minioadmin123`).
+Креды подставьте в `apps/backend/.env.local` (`S3_ENDPOINT=http://localhost:9000`,
+`S3_ACCESS_KEY=minioadmin`, `S3_SECRET_KEY=minioadmin123`, `S3_FORCE_PATH_STYLE=true`).
 
 ## Переменные окружения
 
@@ -92,7 +106,10 @@ docker compose -f docker-compose.e2e.yml up e2e
 | `VIRTUAL_HOST` | `<domain>` | nginx-proxy host (frontend) |
 | `LETSENCRYPT_HOST` | `<domain>` | Let's Encrypt host |
 | `LETSENCRYPT_EMAIL` | (required) | Let's Encrypt email |
-| `S3_*` | (empty) | S3 storage (см. AGENTS.md) |
+
+Любые **другие** переменные (все `S3_*`, `PUBLIC_BASE_URL`, `MOCK_TELEGRAM_POST_URL`
+и любые переменные форка) попадают в `docker/env` через **generic pass-through** —
+см. следующий раздел.
 
 ### Frontend (Nuxt runtime config)
 
@@ -130,9 +147,8 @@ URL backend (без правок кода).
 ### .env.local (dev, оба сервиса)
 
 `.env.local` (не под git) переопределяет `.env` — порты и локальные креды S3/MinIO.
-Есть у **обоих сервисов**: `apps/backend/.env.local.example` (PORT, S3_*;
-загрузчик `apps/backend/src/env.ts`, `override: true`) и `apps/frontend/.env.local.example`
-(PORT, NUXT_*; грузится в `nuxt.config.ts` через dotenv). Внешнее окружение
+Есть у **обоих сервисов**: `apps/backend/.env.local.example` (PORT, S3_*) и
+`apps/frontend/.env.local.example` (PORT, NUXT_*). Внешнее окружение
 (прод-контейнер) имеет наивысший приоритет. При смене порта backend обновите
 `NUXT_API_BASE` у frontend (и `CORS_ORIGIN` у backend). Полный список `S3_*` —
 в корневом `AGENTS.md`.
@@ -154,29 +170,64 @@ URL backend (без правок кода).
 ## Деплой через deploy.sh / ansible
 
 `deploy.sh` (корень) читает корневой `.env` (SSH, DOMAIN, PROJECT_NAME, бренд,
-admin), sftp'ит архив на сервер, генерирует `.app.secrets` (db_password, jwt_secret)
-и запускает `ansible-playbook`. Ansible ставит Docker, поднимает nginx-proxy +
-acme-companion, собирает и поднимает frontend+backend+postgres.
+admin), sftp'ит архив на сервер, генерирует `.app.secrets` (db_password,
+jwt_secret) и запускает `ansible-playbook`. Ansible ставит Docker, поднимает
+nginx-proxy + acme-companion, собирает и поднимает frontend+backend+postgres.
+
+### SSH-ключ без tty (CI/агент)
+
+Если деплой запускается без терминала (CI, агент), а у SSH-ключа есть passphrase:
+при заданном `SSH_KEY_PASSPHRASE` в `.env` `deploy.sh` поднимает локальный
+`ssh-agent` + `SSH_ASKPASS` и добавляет ключ без tty; trap на выходе гасит
+агент. Интерактивный ввод остаётся fallback'ом при наличии tty.
+
+### Generic pass-through переменных окружения (extra_env)
+
+**Любая** переменная, заданная форком в деплой-источниках, автоматически
+попадает в `docker/env` на сервере как `KEY=value`. Править деплой-скрипты
+или ansible-шаблоны не нужно. Пример: форк добавляет `YOOKASSA_SECRET_KEY: xxx`
+в `.envs/production/secret.enc.yaml` → после пуша и деплоя переменная
+автоматически появляется в контейнере backend.
+
+Механика: деплой-скрипт → `vars.yml` → `env.j2` → `docker/env`.
+
+- **CI (`docker/deploy_ci.sh`)**: собирает `ALL_DEPLOY_KEYS` из merged yq
+  (`.envs/<env>/public.yaml` + расшифрованный `secret.enc.yaml`, **ВЕРХНИМ**
+  регистром); в `deploy-env.sh` пишет все значения плюс `EXTRA_ENV_KEYS`
+  (= все ключи минус `BASE_DEPLOY_KEYS` — базовые ключи деплоя: `SSH_*`,
+  `DEPLOY_*`, `DOMAIN`, `PROJECT_*`, `BRAND_*`, `ADMIN_*`, `PROXY_DIR`,
+  `ARCHIVE_PATH` и т.п., рендерятся отдельными полями `vars.yml`).
+  В GitLab CI задаётся **только** age-ключ (`SOPS_AGE_KEY_TEST`/`SOPS_AGE_KEY_PRODUCTION`).
+- **Ручной деплой (`deploy.sh`)**: список доп. переменных — `S3_ENV_VARS`
+  (14 `S3_*`-переменных) + `PUBLIC_BASE_URL` + `MOCK_TELEGRAM_POST_URL` +
+  расширяемый `EXTRA_DEPLOY_ENV_VARS` из корневого `.env`. Источники:
+  `.env` → `apps/backend/.env.local` (gitignored).
+- На сервере в `vars.yml` рендерится `extra_env: { KEY: "value" }`, а `env.j2`
+  generic-циклом `{% for key, value in extra_env.items() %}` превращает это
+  в `KEY=value`. `group_vars/all.yml` содержит одно поле `extra_env: {}` —
+  отдельных s3_*/public_base_url/mock_telegram_post_url полей больше нет.
+- `deploy-env.sh` на сервере — права **chmod 600** (содержит пароли/ключи).
+
+S3-персистентность: значения кешируются в `<project_dir>/.app.s3` (umask 077,
+shell-экранирование) — деплой без заданных `S3_*` не затирает настроенный S3.
+`S3_*` идут через этот же generic-механизм. Файлы `.env.local` и `.app.s3`
+исключены из tar-архивов деплоя.
 
 Полная инструкция — в [`ansible/README.md`](../ansible/README.md) и
-[`deploy.sh`](../deploy.sh).
-
-Логи деплоя: `./deploy.sh` дублирует весь свой вывод в **`logs/deploy.log`**
-(в терминале вывод остаётся прежним). Каждый запуск дописывается в файл с
-заголовком-разделителем по времени запуска.
-
-В конце каждого деплоя (в stdout и в лог) печатается **маркер окончания**:
+[`deploy.sh`](../deploy.sh). Логи — `logs/deploy.log`; в конце деплоя печатается
+**маркер окончания**:
 
 - `### DEPLOY-FINISHED: deploy.sh завершился успешно (exit 0) ###`
 - `### DEPLOY-FAILED: deploy.sh завершился с ошибкой (exit N) ###`
 
-См. «Отслеживание окончания деплоя по маркеру» ниже.
+См. «Отслеживание окончания деплоя по маркеру» в [`areas/ci-deployment.md`](areas/ci-deployment.md).
 
 ### Портируемость по форкам
 
 - `PROJECT_NAME` — **обязателен** в `.env` (нет дефолта, нет хардкода).
 - `project_dir`/`archive_path`/`db_username`/`db_name` выводятся из `project_name`.
-- `group_vars/all.yml` — плейсхолдеры/выводимые; реальные значения — в `vars.yml`.
+- `group_vars/all.yml` — плейсхолдеры/выводимые; реальные значения — в `vars.yml`
+  (плюс единое `extra_env: {}`).
 - Проверка: `grep -rn "gmoreva-setup\|vibesetup_db\|/opt/vibesetup" deploy.sh ansible/ docker/ .env.example`
   — только плейсхолдеры/комментарии.
 
@@ -195,168 +246,25 @@ acme-companion, собирает и поднимает frontend+backend+postgres
 
 ## Деплой через GitLab CI (автоматический)
 
-Пайплайн [`.gitlab-ci.yml`](../.gitlab-ci.yml): этапы **build → deploy**. На push
-в `master` обе джобы `deploy:test` и `deploy:production` запускаются **автоматом**
-(перевести прод в manual — правка одной строки `when` в rules джобы).
+Пайплайн `.gitlab-ci.yml` (этапы **build → deploy**) деплоит из Registry без
+сборки на сервере: образы `frontend`/`backend` по тегу SHA, образ `ci-deploy`
+(sops/yq/ssh внутри), секреты SOPS+age per-стенд. `deploy:test` запускается
+на push в default-ветку и в `develop`. Подробно —
+[`areas/ci-deployment.md`](areas/ci-deployment.md).
 
-- **`build:docker`** — собирает и пушит оба образа в Registry
-  (`$CI_REGISTRY_IMAGE/{frontend,backend}`) с двумя тегами: `$CI_COMMIT_SHORT_SHA`
-  (иммутабельный, именно его пуллят джобы деплоя) + `$CI_COMMIT_REF_SLUG`
-  (движущийся тег текущей ветки). Тег `latest` НЕ создаётся.
-- **`deploy:test` / `deploy:production`** — деплой из Registry **без сборки на
-  сервере**: каждая джоба экспортирует per-стенд age-ключ (`SOPS_AGE_KEY_TEST` /
-  `SOPS_AGE_KEY_PRODUCTION` → `SOPS_AGE_KEY`), `DEPLOY_ENV` и запускает
-  [`docker/deploy_ci.sh`](../docker/deploy_ci.sh). `resource_group` на каждой
-  джобе защищает от параллельных деплоев одного окружения.
+### Особенности ansible-ролей
 
-### Шифрование энвов (SOPS + age)
+- **`app`**: после `docker compose up -d` — ожидание готовности PostgreSQL
+  (`pg_isready` с ретраями) и idempotent-синхронизация пароля роли через
+  `ALTER USER` (`no_log`, экранирование кавычек) с рестартом backend при
+  изменении. Лечит ошибку `28P01` при смене `db_password`.
+- **`nginx_proxy`**: создаёт `{{ proxy_dir }}/vhost.d/default` с
+  `client_max_body_size 500M` (nginx-proxy по умолчанию режет тела >1M —
+  413). `compose-proxy.yml.j2` монтирует `vhost.d` с хоста (bind-mount);
+  при изменении `vhost.d/default` выполняется reload nginx-proxy.
 
-Секреты окружений хранятся **зашифрованными прямо в git** — механика SOPS + age
-(как в ai-provider). В GitLab Variables лежит ТОЛЬКО ключ расшифровки.
-
-Структура `.envs/`:
-
-```
-.envs/
-├── test/
-│   ├── public.yaml        # несекретное: SSH_HOST, DOMAIN, PROJECT_NAME, BRAND_*, ...
-│   ├── secret.yaml        # секретное (gitignored!): ADMIN_PASSWORD, DEPLOY_SSH_KEY
-│   └── secret.enc.yaml    # зашифрованный secret.yaml (в git)
-└── production/
-    ├── public.yaml
-    ├── secret.yaml        # (gitignored)
-    └── secret.enc.yaml
-```
-
-- **public.yaml** — несекретные значения (в git открыто);
-- **secret.yaml** — секретные значения, **в `.gitignore`**; шаблон — `secret.yaml.example`;
-- **secret.enc.yaml** — результат шифрования `secret.yaml` через sops+age, **в git**;
-- **`.agekey`** — приватный age-ключ (gitignored), **`.agekey.public`** — recipient (в git).
-
-Переменные окружения в yaml — **ВЕРХНИМ регистром** (`SSH_HOST`, `ADMIN_PASSWORD`,
-`DEPLOY_SSH_KEY`), т.к. экспортируются в env. `DEPLOY_SSH_KEY` — `base64` приватного
-SSH-ключа деплоя (`base64 -w0 path/to/id_rsa`), без passphrase.
-
-Цикл работы с секретами:
-
-```bash
-# 0) Первичная генерация пары ключей (один раз; приватный НЕ коммитить):
-age-keygen -o .agekey          # создаёт .agekey (gitignored); public — вторая строка файла
-cat .agekey | grep -o 'age1.*' > .agekey.public
-
-# 1) Заполни секреты:
-cp .envs/test/secret.yaml.example .envs/test/secret.yaml   # и заполни
-
-# 2) Зашифруй и закоммить результат:
-bash scripts/encrypt.sh test     # обновляет .envs/test/secret.enc.yaml
-git add .envs/test/secret.enc.yaml .agekey.public
-
-# 3) Обратно (поредактировать): bash scripts/decrypt.sh test
-```
-
-Требуются `sops` и `age-keygen`/`age` ([sops](https://github.com/getsops/sops),
-[age](https://github.com/FiloSottile/age)).
-
-### GitLab Variables (Settings → CI/CD → Variables, флаги protected + masked)
-
-| Variable | Окружение |
-|----------|-----------|
-| `SOPS_AGE_KEY_TEST` | тест-сервер — приватный age-ключ стенда |
-| `SOPS_AGE_KEY_PRODUCTION` | прод-сервер — приватный age-ключ стенда |
-
-Каждая переменная — **содержимое приватного age-ключа** (вторая строка файла
-`.agekey`, начинающаяся с `AGE-SECRET-KEY-`). Ключи per-стенд: расшифровать
-тестовые секреты продовым ключом нельзя.
-
-Старые `DEPLOY_BUNDLE_*`, `DEPLOY_HOST` / `DEPLOY_PATH` / `SSH_PRIVATE_KEY` /
-`DEPLOY_COMPOSE_PROJECT` больше **не используются**.
-
-### Локальный тест-запуск
-
-```bash
-# Ключ — из ./.agekey (gitignored) или env SOPS_AGE_KEY; registry-логин скипается,
-# если CI_REGISTRY/CI_JOB_TOKEN не заданы (docker login в registry на сервере сделан руками).
-DEPLOY_ENV=test \
-FRONTEND_IMAGE="registry.example.com/proj/frontend:abc123" \
-BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
-  bash docker/deploy_ci.sh
-# Либо всё готовыми значениями: ./deployci-test.sh (DEPLOY_ENV=test по умолчанию)
-```
-
-### Поток docker/deploy_ci.sh
-
-1. Расшифровывает `.envs/$DEPLOY_ENV/secret.enc.yaml` через `SOPS_AGE_KEY`
-   (sops + age), мержит с `public.yaml` (yq; secret перекрывает public) и
-   экспортирует всё как переменные окружения; `DEPLOY_SSH_KEY` (base64)
-   → временный `id_rsa` (chmod 600).
-2. На **пустом** сервере ставит всё с нуля: ansible → docker (роль `deps`) →
-   nginx-proxy + acme-companion (роль `proxy`); sftp'ит архив исходников +
-   deploy-env.sh.
-3. Генерирует `.app.secrets` (db_password, jwt_secret — один раз, при повторных
-   деплоях переиспользуются) и `ansible/vars.yml`.
-4. Логин в Registry **временным токеном** (`CI_JOB_TOKEN`, пароль через stdin;
-   живёт только в рамках джобы), после деплоя — `docker logout`.
-5. Запускает `ansible-playbook` с extra vars `frontend_image`/`backend_image` →
-   роль `app` в **Registry-режиме**: прокидывает `FRONTEND_IMAGE`/`BACKEND_IMAGE`
-   (теги по SHA) в `docker/.env` и делает `docker compose pull frontend backend`
-   вместо build. Без этих vars — старый build-режим (ручной `deploy.sh` не менялся).
-6. Healthcheck: `https://$DOMAIN/api/users/count` → 200.
-
-Логи деплоя: `deploy_ci.sh` дублирует весь свой вывод в **`logs/deploy-ci.log`**
-(и в stdout, т.е. в лог CI-джобы). Каждый запуск дописывается в файл с
-заголовком-разделителем по времени запуска.
-
-## Отслеживание окончания деплоя по маркеру
-
-Оба скрипта деплоя в самом конце печатают маркер окончания (trap на EXIT —
-печатается всегда, и при успехе, и при провале):
-
-| Маркер | Значение |
-|---|---|
-| `### DEPLOY-FINISHED: ... (exit 0) ###` | деплой завершился успешно |
-| `### DEPLOY-FAILED: ... (exit N) ###` | деплой завершился с ошибкой |
-
-Маркер попадает и в stdout, и в лог-файл (`logs/deploy.log` / `logs/deploy-ci.log`).
-Это позволяет не следить за логом бесконечно, а дождаться появления маркера.
-
-Примеры ожидания маркера в локальном логе:
-
-```bash
-# 1) Ждать маркер в реальном времени (Ctrl+C после появления — tail сам не выйдет,
-#    маркер печатается ПЕРЕД завершением скрипта):
-tail -f logs/deploy.log
-
-# 2) Однократная проверка «деплой ещё идёт или уже закончился?» по последнему запуску:
-grep -E 'DEPLOY-(FINISHED|FAILED)' logs/deploy.log | tail -1
-
-# 3) Запустить деплой и автоматически вернуться, когда появится маркер:
-./deploy.sh 2>&1 | sed -n '/### DEPLOY-/q;p'
-```
-
-Для CI-деплоя аналогично: маркер `### DEPLOY-FINISHED ###` в конце лога джобы
-GitLab означает, что деплой дошёл до конца; `### DEPLOY-FAILED ###` — джоба
-упадёт (exit code ≠ 0). Ожидать окончания можно также по статусу pipeline
-(`success` / `failed` у джобы `deploy:test` / `deploy:production`).
-
-### Требования и ограничения CI-деплоя
-
-- **Age-ключ не задан → деплой пропускается**: джоба завершается успешно с
-  warning'ом в консоли («деплой пропущен»), пайплайн остаётся зелёным. Чтобы деплой
-  заработал — заведите `SOPS_AGE_KEY_*` в Settings → CI/CD → Variables
-  (protected+masked).
-- Ветка `master` — **protected**: иначе protected-переменные недоступны и джоба
-  пропустит деплой (а не упадёт) — ключ просто не будет виден на непротектед ветке.
-- **Host key сервера**: по умолчанию `StrictHostKeyChecking=accept-new` — если сервер
-  пересоздан и в known_hosts раннера остался старый ключ, деплой упадёт с
-  `REMOTE HOST IDENTIFICATION HAS CHANGED`. Отключить проверку — переменная
-  `DEPLOY_SKIP_HOST_KEY_CHECK=1` (Settings → CI/CD → Variables; НЕБЕЗОПАСНО — MITM-риск);
-  безопасная альтернатива — `ssh-keygen -R <host>` на раннере.
-- `CI_JOB_TOKEN` открывает только Registry **своего** проекта; для образов из
-  чужого проекта нужен deploy token.
-- Чек-лист: оба образа в Registry (тег SHA) → age-ключи заведены (protected+masked,
-  ветка protected) → секреты зашифрованы и закоммичены (`.envs/*/secret.enc.yaml`) →
-  DNS домена указывает на IP сервера → джобы зелёные →
-  `curl https://<DOMAIN>/api/users/count` → 200.
+Логи CI-деплоя (`logs/deploy-ci.log`) и маркеры DEPLOY-* —
+см. [`areas/ci-deployment.md`](areas/ci-deployment.md).
 
 ## Частые ошибки
 
@@ -365,22 +273,15 @@ GitLab означает, что деплой дошёл до конца; `### DE
    `http://localhost:3000` (dev). SSR-фетч идёт мимо CORS.
 3. **Backend не стартует** — проверьте `docker compose logs backend`; частая
    причина — PostgreSQL ещё не готов. Backend сам ретраит подключение
-   (5 попыток × 3с) и создаёт БД при отсутствии (`ensure-database.ts`);
-   если всё равно падает — проверьте `DB_USERNAME`/`DB_PASSWORD` и право `CREATEDB`.
+   (5 попыток × 3с) и создаёт БД при отсутствии (`ensure-database.ts`).
 4. **`/api` 404 на клиенте** — Nuxt не проксирует: проверьте `routeRules` в
    `nuxt.config.ts` и `NUXT_API_BASE`.
 5. **401 на /admin под SSR** — cookie не проксируется: проверьте `useApi`
    (`useRequestHeaders(['cookie'])`).
 6. **Cookie не ставится** — `COOKIE_SECURE=true` требует HTTPS; в dev оставьте
    пустым/false.
-7. **Deploy-джоба зелёная, но деплой пропущен (warning в логе)** — age-ключ
-   (`SOPS_AGE_KEY_TEST` / `SOPS_AGE_KEY_PRODUCTION`) не заведён в
-   Settings → CI/CD → Variables, или ветка не protected (protected-переменные
-   недоступны на обычных ветках). Заведите ключ — и деплой включится
-   на следующем пайплайне.
-8. **`docker pull` 401/unauthorized на сервере** — Registry-логин не выполнен:
-   при ручном тест-запуске `deploy_ci.sh` без `CI_REGISTRY`/`CI_JOB_TOKEN`
-   авторизуйтесь в registry на сервере руками (`docker login`).
+CI-специфичные ошибки (пропущенный деплой, `docker pull` 401) —
+см. [`areas/ci-deployment.md`](areas/ci-deployment.md) «Требования и ограничения».
 
 ## Чек-лист деплоя
 
@@ -388,10 +289,9 @@ GitLab означает, что деплой дошёл до конца; `### DE
 - [ ] `.env` (deploy.sh) заполнен: `PROJECT_NAME`, `DOMAIN`, `LETSENCRYPT_EMAIL`,
       `ADMIN_PASSWORD`, SSH-креды
 - [ ] `JWT_SECRET` — production-ключ (генерируется в `.app.secrets`)
-- [ ] `CORS_ORIGIN` = домен (рендерится ansible)
-- [ ] `COOKIE_SECURE=true` (прод, HTTPS)
+- [ ] `COOKIE_SECURE=true` (прод, HTTPS); `CORS_ORIGIN` = домен (ansible)
 - [ ] `DB_SYNCHRONIZE=false` (prod — миграции при старте)
-- [ ] Миграции накатываются (проверить `docker compose logs backend` — нет ошибок TypeORM)
+- [ ] Миграции накатываются (`docker compose logs backend` — нет ошибок TypeORM)
 - [ ] DNS-запись домена указывает на IP сервера
 - [ ] `docker compose -p <project> -f docker-compose.prod.yml up -d --build` прошёл
 - [ ] PostgreSQL healthcheck прошёл
