@@ -43,6 +43,14 @@ Nest.js API с глобальным префиксом `/api`. Модули: `Au
 **Create user request**: `{ login: string, password: string, role?: 'admin' | 'user' }`
 **User response**: `{ id, login, role, createdAt, updatedAt }` (no passwordHash)
 
+### Version
+
+| Method | Endpoint | Auth | Описание |
+|--------|----------|------|----------|
+| GET | `/api/version` | — | Версия приложения + SHA коммита (public). Проверка деплоя |
+
+**Version response**: `{ version: string, commit: string | null, build: number }` — версия из `package.json`, SHA из `APP_COMMIT_SHA` (CI проставляет автоматически), build — хардкод в контроллере
+
 ### Files
 
 Все эндпоинты под JWT. `fileKey` передаётся через query (`?fileKey=...`) для поддержки ключей со слэшами (напр. `uploads/abc_.png`). Прямая загрузка — multipart-поле `file`.

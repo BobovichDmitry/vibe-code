@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { BrandingModule } from './branding/branding.module';
 import { FilesModule } from './files/files.module';
+import { VersionModule } from './version/version.module';
 import { UsersService } from './users/users.service';
 
 @Module({
@@ -13,6 +14,7 @@ import { UsersService } from './users/users.service';
     UsersModule,
     BrandingModule,
     FilesModule,
+    VersionModule,
   ],
 })
 export class AppModule implements OnModuleInit {

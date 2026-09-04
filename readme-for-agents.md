@@ -207,6 +207,8 @@ To stop: `kill $(cat /var/run/vibe-setup-ui.pid)`
 
 ```bash
 # Check API health
+# API version (package.json version + commit SHA — проверка деплоя)
+curl http://localhost:3000/api/version
 curl http://localhost:3000/api/users/count
 
 # Login with admin credentials

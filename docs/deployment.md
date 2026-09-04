@@ -237,6 +237,10 @@ shell-экранирование) — деплой без заданных `S3_*
    PROJECT_NAME, BRAND_*).
 2. `./deploy.sh` — собирает архив, sftp, генерация секретов, ansible-playbook.
 3. Healthcheck: `https://<DOMAIN>/api/users/count` → 200.
+4. Проверка версии: `curl https://<DOMAIN>/api/version` — `{ "version": "…", "commit": "…", "build": 1 }`.
+   В CI-деплое `commit` проставляется автоматически (APP_COMMIT_SHA = SHA коммита);
+   в ручном — через `EXTRA_DEPLOY_ENV_VARS="APP_COMMIT_SHA"` + `APP_COMMIT_SHA=…` в `.env`;
+   `build` — хардкод в `apps/backend/src/version/version.controller.ts`.
 
 ### nginx-proxy (мульти-проект)
 

@@ -231,6 +231,7 @@ When debugging a problem, read the logs instead:
 | PATCH | `/api/users/:id` | Update user (admin only) |
 | DELETE | `/api/users/:id` | Delete user (admin only) |
 | GET | `/api/users/count` | User count (public, no auth) |
+| GET | `/api/version` | Version + commit SHA (public, проверка деплоя) |
 
 ### Files
 

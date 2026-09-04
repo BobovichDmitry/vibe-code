@@ -203,6 +203,13 @@ while IFS= read -r line; do
 
 done <<< "$MERGED"
 
+# SHA коммита из CI (чтобы GET /api/version показывал, какая сборка запущена).
+# Едет на сервер тем же generic pass-through (extra_env), если не задан вручную.
+if [ -z "${APP_COMMIT_SHA:-}" ] && [ -n "${CI_COMMIT_SHORT_SHA:-}" ]; then
+  export APP_COMMIT_SHA="$CI_COMMIT_SHORT_SHA"
+  ALL_DEPLOY_KEYS="$ALL_DEPLOY_KEYS APP_COMMIT_SHA"
+fi
+
 BUNDLE_DIR="$(mktemp -d /tmp/deploy-ci.XXXXXX)"
 chmod 700 "$BUNDLE_DIR"
 
