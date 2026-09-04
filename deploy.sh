@@ -187,19 +187,21 @@ echo "→ Сборка архива исходников..."
 ARCHIVE_LOCAL="/tmp/${PROJECT_NAME}.tar.gz"
 DEPLOY_ENV_LOCAL="/tmp/${PROJECT_NAME}-deploy-env.sh"
 rm -f "$ARCHIVE_LOCAL" "$DEPLOY_ENV_LOCAL"
+# Якорь './' обязателен (см. docker/deploy_ci.sh): без него GNU tar матчит
+# --exclude по любому пути в дереве, а не только в корне архива.
 tar --exclude=node_modules \
-    --exclude=dist \
     --exclude=.git \
-    --exclude=logs \
-    --exclude=data \
-    --exclude=playwright-report \
-    --exclude=test-results \
-    --exclude=.env \
-    --exclude=.env.local \
-    --exclude=.app.secrets \
-    --exclude=.app.s3 \
     --exclude='*.tsbuildinfo' \
-    --exclude=deploy-vars.yml \
+    --exclude='./dist' \
+    --exclude='./logs' \
+    --exclude='./data' \
+    --exclude='./playwright-report' \
+    --exclude='./test-results' \
+    --exclude='./.env' \
+    --exclude='./.env.local' \
+    --exclude='./.app.secrets' \
+    --exclude='./.app.s3' \
+    --exclude='./deploy-vars.yml' \
     -czf "$ARCHIVE_LOCAL" -C "$ROOT" .
 echo "   архив: $(du -h "$ARCHIVE_LOCAL" | cut -f1)"
 

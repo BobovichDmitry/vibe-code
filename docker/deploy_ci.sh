@@ -312,28 +312,31 @@ DEPLOY_ENV_LOCAL="/tmp/${PROJECT_NAME}-deploy-env.sh"
 rm -f "$ARCHIVE_LOCAL" "$DEPLOY_ENV_LOCAL"
 # Архив: серверу нужны только ansible/, docker/ и корневые файлы — код
 # приложения приезжает в Docker-образах из Registry. Лишнее не отправляем.
+# Якорь './' обязателен: без него GNU tar трактует --exclude=tasks как ЛЮБУЮ
+# папку с таким именем в дереве (напр. ansible/roles/app/tasks/ — роли
+# переставали обновляться на сервере).
 tar --exclude=node_modules \
-    --exclude=dist \
     --exclude=.git \
-    --exclude=logs \
-    --exclude=data \
-    --exclude=playwright-report \
-    --exclude=test-results \
-    --exclude=.env \
-    --exclude=.env.local \
-    --exclude=.app.secrets \
-    --exclude=.app.s3 \
-    --exclude=apps \
-    --exclude=e2e \
-    --exclude=docs \
-    --exclude=tasks \
-    --exclude=.idea \
-    --exclude=.pi \
-    --exclude=.ai \
     --exclude='*.tsbuildinfo' \
-    --exclude=deploy-vars.yml \
-    --exclude=questions.md \
-    --exclude=readme-for-agents.md \
+    --exclude='./dist' \
+    --exclude='./logs' \
+    --exclude='./data' \
+    --exclude='./playwright-report' \
+    --exclude='./test-results' \
+    --exclude='./.env' \
+    --exclude='./.env.local' \
+    --exclude='./.app.secrets' \
+    --exclude='./.app.s3' \
+    --exclude='./apps' \
+    --exclude='./e2e' \
+    --exclude='./docs' \
+    --exclude='./tasks' \
+    --exclude='./.idea' \
+    --exclude='./.pi' \
+    --exclude='./.ai' \
+    --exclude='./deploy-vars.yml' \
+    --exclude='./questions.md' \
+    --exclude='./readme-for-agents.md' \
     -czf "$ARCHIVE_LOCAL" -C "$ROOT" .
 echo "   архив: $(du -h "$ARCHIVE_LOCAL" | cut -f1)"
 
