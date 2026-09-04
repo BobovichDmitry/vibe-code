@@ -93,7 +93,7 @@ if ! command -v sops >/dev/null 2>&1 || ! command -v yq >/dev/null 2>&1; then
       }
       if [ ! -x "$TOOLS_DIR/sops.exe" ]; then
         echo "→ Скачиваю sops в $TOOLS_DIR/ ..."
-        dl "https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.windows.amd64.exe" "$TOOLS_DIR/sops.exe"
+        dl "https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.amd64.exe" "$TOOLS_DIR/sops.exe"
       fi
       if [ ! -x "$TOOLS_DIR/yq.exe" ]; then
         echo "→ Скачиваю yq в $TOOLS_DIR/ ..."

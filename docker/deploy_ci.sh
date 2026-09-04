@@ -195,7 +195,12 @@ echo "→ Расшифровка .envs/$DEPLOY_ENV/secret.enc.yaml (sops+age)...
 SECRET_DATA="$(sops -d --input-type yaml --output-type yaml "$SECRET_ENC")"
 
 # Мерж secret (перекрывает) + public → export UPPERCASE-ключей как переменных окружения
-MERGED="$(yq ea -o p '. as $item ireduce ({}; . * $item)' <(echo "$SECRET_DATA") <(cat "$PUBLIC_YML"))"
+# Временный файл вместо process substitution: нативный yq.exe на Windows
+# (Git Bash) не умеет читать /proc/.../fd/N из MSYS substitution.
+SECRET_TMP_FILE="$(mktemp)"
+printf '%s\n' "$SECRET_DATA" > "$SECRET_TMP_FILE"
+MERGED="$(yq ea -o p '. as $item ireduce ({}; . * $item)' "$SECRET_TMP_FILE" "$PUBLIC_YML")"
+rm -f "$SECRET_TMP_FILE"
 # Формат вывода yq -o p: строки "KEY = value" (пробелы вокруг "=").
 # Пропускаем пустые строки и комментарии; обёрнутые в кавычки значения разворачиваем.
 # ALL_DEPLOY_KEYS — ВСЕ ключи из .envs/<env>/ (они и есть источник правды для деплоя:
