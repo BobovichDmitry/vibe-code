@@ -218,6 +218,18 @@ else
   $COMPOSE stop "backend-$ACTIVE_SLOT" "frontend-$ACTIVE_SLOT" || fail_deploy "Не удалось остановить старый слот $ACTIVE_SLOT"
 fi
 
+# --- 8. Легаси-контейнеры миграции на blue-green ---
+# Контейнеры frontend/backend старой (до-blue-green) схемы: nginx-proxy может
+# продолжать маршрутизировать домен на них (двойной VIRTUAL_HOST). best-effort.
+for legacy in frontend backend; do
+  ids="$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" \
+                     --filter "label=com.docker.compose.service=$legacy")"
+  if [ -n "$ids" ]; then
+    echo "→ Удаляю легаси-контейнер '$legacy' (старая схема, до blue-green)..."
+    docker rm -f $ids >/dev/null 2>&1 || true
+  fi
+done
+
 END_TS=$(date +%s)
 DURATION_MIN=$(( (END_TS - START_TS) / 60 ))
 FINISH_TIME="$(date +%H:%M:%S)"

@@ -97,6 +97,12 @@ fi
 # может быть без интернет-доступа) → скачивание с ретраями (DNS/сеть к GitHub
 # периодически флапают — без ретраиев падают деплои).
 ensure_sops_yq() {
+  # Если инструменты уже доступны (в т.ч. подложенные через PATH локальным
+  # запуском deploy_local.sh) — платформенный поиск/скачивание не нужен
+  # (Windows/MINGW в case ниже не поддерживается).
+  if command -v sops >/dev/null 2>&1 && command -v yq >/dev/null 2>&1; then
+    return 0
+  fi
   local TOOL_BIN="$(mktemp -d /tmp/deploy-tools.XXXXXX)"
   export PATH="$TOOL_BIN:$PATH"
   local OS_ARCH="$(uname -s)_$(uname -m)"

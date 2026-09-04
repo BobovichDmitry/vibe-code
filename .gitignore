@@ -54,3 +54,6 @@ e2e/videos/
 logs/
 node_modules/
 test-results/*
+
+# Локальные бинарники sops/yq для deploy_local.sh (Windows)
+.tools/
