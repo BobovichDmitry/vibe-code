@@ -46,6 +46,8 @@ letsencrypt_email: "admin@example.com"
 # --- Production compose / CORS ---
 # Compose-файл прод-деплоя (относительно docker/)
 prod_compose_file: "docker-compose.prod.yml"
+# Compose-файл общего nginx-proxy (в proxy_dir)
+proxy_compose_file: "compose-proxy.yml"
 # Origin клиента за nginx-proxy (HTTPS-домен) — для backend CORS_ORIGIN
 cors_origin: "https://{{ domain }}"
 # --- Дополнительно прокидываемые переменные окружения (generic pass-through) ---
