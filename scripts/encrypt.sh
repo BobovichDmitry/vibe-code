@@ -6,7 +6,7 @@
 #
 # Требования:
 #   - sops (https://github.com/getsops/sops);
-#   - файл .agekey.public в корне репо (recipient) — см. docs/deployment.md.
+#   - файл .envs/<env>/.agekey.public (recipient, в git) — см. docs/deployment.md.
 #
 # Цикл: отредактировал secret.yaml → encrypt.sh <env> → закоммить secret.enc.yaml.
 # =============================================================================
@@ -24,12 +24,12 @@ if [ ! -f ".envs/${ENV}/secret.yaml" ]; then
   echo "✗ Нет файла .envs/${ENV}/secret.yaml" >&2
   exit 1
 fi
-if [ ! -f ".agekey.public" ]; then
-  echo "✗ Нет файла .agekey.public в корне репо — сгенерируй пару ключей (age-keygen -o .agekey)" >&2
+if [ ! -f ".envs/${ENV}/.agekey.public" ]; then
+  echo "✗ Нет файла .envs/${ENV}/.agekey.public — сгенерируй пару ключей: age-keygen -o .envs/${ENV}/.agekey" >&2
   exit 1
 fi
 
-export SOPS_AGE_RECIPIENTS="$(cat .agekey.public)"
+export SOPS_AGE_RECIPIENTS="$(cat ".envs/${ENV}/.agekey.public")"
 sops --encrypt --input-type yaml --output-type yaml \
   --age "${SOPS_AGE_RECIPIENTS}" \
   ".envs/${ENV}/secret.yaml" > ".envs/${ENV}/secret.enc.yaml"

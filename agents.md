@@ -156,7 +156,7 @@ DEPLOY_ENV=test bash deploy_local.sh
 DEPLOY_SKIP_LOGIN=1 bash deploy_local.sh
 ```
 
-Требуется: `./.agekey` (age-ключ стенда, gitignored) + PAT с `read_registry` в `CI_JOB_TOKEN`.
+Требуется: `.envs/<env>/.agekey` (age-ключ стенда, per-env, gitignored) + PAT с `read_registry` в `CI_JOB_TOKEN`.
 Поток: расшифровка `.envs/<env>/secret.enc.yaml` → архив исходников → SSH → ansible →
 `docker/deploy_0downtime.sh --pull` (blue-green переключение). Лог: `logs/deploy-local-run.log` (или задай свой через tee).
 

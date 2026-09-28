@@ -10,7 +10,9 @@
 
 
 # Build outputs
-# CI-деплой: приватный age-ключ и открытые секреты энвов — НИКОГДА не коммитить
+# CI-деплой: приватные age-ключи (per-env: .envs/<env>/.agekey, правило .agekey — на любом
+# уровне) и открытые секреты энвов — НИКОГДА не коммитить.
+# Публичные ключи .envs/<env>/.agekey.public — В git (recipient для encrypt.sh).
 .agekey
 .envs/*/secret.yaml
 # Coverage

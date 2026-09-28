@@ -21,7 +21,9 @@
 #   DEPLOY_SKIP_LOGIN=1 — не делать docker login (если сервер уже залогинен)
 #
 # Требования:
-#   - .agekey в корне репо (age-ключ стенда) — расшифровка secret.enc.yaml;
+#   - age-ключ стенда .envs/<env>/.agekey (per-env, gitignored) — расшифровка
+#     secret.enc.yaml (создаётся age-keygen -o .envs/<env>/.agekey; recipient —
+#     .envs/<env>/.agekey.public, в git);
 #   - bash (Git Bash на Windows), ssh, curl, tar;
 #   - sops/yq скачаются автоматически в .tools/ (Windows) либо берутся из PATH.
 # =============================================================================
@@ -56,13 +58,14 @@ echo "  стенд:      $DEPLOY_ENV"
 echo "  образы:     $FRONTEND_IMAGE"
 echo "              $BACKEND_IMAGE"
 
-# --- age-ключ ---
+# --- age-ключ (per-env: .envs/<DEPLOY_ENV>/.agekey) ---
 if [ -z "${SOPS_AGE_KEY:-}" ] && [ -z "${SOPS_AGE_KEY_FILE:-}" ]; then
-  if [ -f "$ROOT/.agekey" ]; then
-    export SOPS_AGE_KEY_FILE="$ROOT/.agekey"
-    echo "  age-ключ:   ./.agekey"
+  AGEKEY_FILE="$ROOT/.envs/$DEPLOY_ENV/.agekey"
+  if [ -f "$AGEKEY_FILE" ]; then
+    export SOPS_AGE_KEY_FILE="$AGEKEY_FILE"
+    echo "  age-ключ:   .envs/$DEPLOY_ENV/.agekey"
   else
-    echo "✗ Нет age-ключа: передай SOPS_AGE_KEY/SOPS_AGE_KEY_FILE или создай ./.agekey" >&2
+    echo "✗ Нет age-ключа: передай SOPS_AGE_KEY/SOPS_AGE_KEY_FILE или создай .envs/$DEPLOY_ENV/.agekey (age-keygen -o .envs/$DEPLOY_ENV/.agekey)" >&2
     exit 1
   fi
 fi

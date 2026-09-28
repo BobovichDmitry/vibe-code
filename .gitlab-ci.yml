@@ -20,7 +20,8 @@
 #
 # Требуемые CI/CD variables (Settings → CI/CD → Variables, protected+masked;
 # по ОДНОЙ age-ключу на окружение — содержимое приватного ключа, вторая строка
-# файла .agekey; сама пара генерируется через age-keygen, см. docs/deployment.md):
+# файла .envs/<env>/.agekey; пара генерируется через age-keygen, recipient
+# .envs/<env>/.agekey.public в git, см. docs/deployment.md):
 #   SOPS_AGE_KEY_TEST        — age-ключ стенда test;
 #   SOPS_AGE_KEY_PRODUCTION  — age-ключ стенда production.
 #

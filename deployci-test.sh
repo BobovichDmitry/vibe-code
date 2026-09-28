@@ -2,8 +2,8 @@
 # =============================================================================
 # deployci-test.sh — локальный тест-запуск CI-деплоя (без GitLab CI).
 # =============================================================================
-# Ключ расшифровки берётся из ./.agekey (gitignored, создаётся age-keygen)
-# или из env SOPS_AGE_KEY. Образы — собранные пайплайном теги :master из Registry.
+# Ключ расшифровки берётся из .envs/<env>/.agekey (per-env, gitignored,
+# создаётся age-keygen) или из env SOPS_AGE_KEY. Образы — собранные пайплайном теги :master из Registry.
 #
 # Registry-логин: если на целевом сервере уже сделан docker login в
 # registry.git.obvu.ru — запускать как есть. Иначе задай в скрипте:
@@ -13,12 +13,12 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-if [ -z "${SOPS_AGE_KEY:-}" ] && [ -z "${SOPS_AGE_KEY_FILE:-}" ] && [ ! -f .agekey ]; then
-  echo "✗ Нет ключа расшифровки: создай ./.agekey (age-keygen -o .agekey) или задай SOPS_AGE_KEY" >&2
+export DEPLOY_ENV="${DEPLOY_ENV:-test}"
+
+if [ -z "${SOPS_AGE_KEY:-}" ] && [ -z "${SOPS_AGE_KEY_FILE:-}" ] && [ ! -f ".envs/$DEPLOY_ENV/.agekey" ]; then
+  echo "✗ Нет ключа расшифровки: создай .envs/$DEPLOY_ENV/.agekey (age-keygen -o .envs/$DEPLOY_ENV/.agekey) или задай SOPS_AGE_KEY" >&2
   exit 1
 fi
-
-export DEPLOY_ENV="${DEPLOY_ENV:-test}"
 export FRONTEND_IMAGE="registry.git.obvu.ru/amorev/vibecode-setup/frontend:master"
 export BACKEND_IMAGE="registry.git.obvu.ru/amorev/vibecode-setup/backend:master"
 

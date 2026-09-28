@@ -31,8 +31,8 @@
 # ./deploy.sh (не зависит от этого скрипта).
 #
 # --- Локальный тест-запуск (без GitLab) ---
-# Ключ расшифровки: env SOPS_AGE_KEY, SOPS_AGE_KEY_FILE или файл ./.agekey в
-# корне репо (gitignored). Образы — собранные пайплайном теги из Registry.
+# Ключ расшифровки: env SOPS_AGE_KEY, SOPS_AGE_KEY_FILE или файл
+# .envs/$DEPLOY_ENV/.agekey (per-env, gitignored). Образы — собранные пайплайном теги из Registry.
 #
 #   DEPLOY_ENV=test FRONTEND_IMAGE="registry.../frontend:master" \
 #   BACKEND_IMAGE="registry.../backend:master" bash docker/deploy_ci.sh
@@ -180,10 +180,13 @@ ensure_sops_yq() {
 ensure_sops_yq
 
 # --- 2. Расшифровка энвов (.envs/$DEPLOY_ENV) + временный id_rsa ---
+# Ключ: env SOPS_AGE_KEY (в CI — GitLab Variables) > SOPS_AGE_KEY_FILE >
+# per-env файл .envs/$DEPLOY_ENV/.agekey (локальный запуск без CI).
 if [ -z "${SOPS_AGE_KEY:-}" ] && [ -z "${SOPS_AGE_KEY_FILE:-}" ]; then
-  if [ -f "$ROOT/.agekey" ]; then
-    export SOPS_AGE_KEY_FILE="$ROOT/.agekey"
-    echo "→ SOPS_AGE_KEY не задан — использую ключ из ./.agekey"
+  AGEKEY_FILE="$ROOT/.envs/$DEPLOY_ENV/.agekey"
+  if [ -f "$AGEKEY_FILE" ]; then
+    export SOPS_AGE_KEY_FILE="$AGEKEY_FILE"
+    echo "→ SOPS_AGE_KEY не задан — использую ключ из .envs/$DEPLOY_ENV/.agekey"
   fi
 fi
 SECRET_ENC="$ROOT/.envs/$DEPLOY_ENV/secret.enc.yaml"

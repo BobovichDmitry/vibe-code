@@ -200,7 +200,9 @@ nginx-proxy + acme-companion и деплоит приложение через b
   `deploy-env.sh` пишет все значения плюс `EXTRA_ENV_KEYS` (= все ключи минус
   `BASE_DEPLOY_KEYS` — `SSH_*`, `DEPLOY_*`, `DOMAIN`, `PROJECT_*`, `BRAND_*`,
   `ADMIN_*` и т.п.). В GitLab CI задаётся **только** age-ключ
-  (`SOPS_AGE_KEY_TEST`/`SOPS_AGE_KEY_PRODUCTION`).
+  (`SOPS_AGE_KEY_TEST`/`SOPS_AGE_KEY_PRODUCTION`) — содержимое per-env ключа
+  `.envs/<env>/.agekey` (приватный, gitignored; recipient для encrypt.sh —
+  `.envs/<env>/.agekey.public`, в git).
 - **Ручной деплой (`deploy.sh`)**: `S3_ENV_VARS` (14 `S3_*`) +
   `PUBLIC_BASE_URL` + `MOCK_TELEGRAM_POST_URL` + расширяемый
   `EXTRA_DEPLOY_ENV_VARS` из корневого `.env`. Источники: `.env` →

@@ -28,6 +28,10 @@
 Секреты окружений хранятся **зашифрованными прямо в git** — механика SOPS + age
 (как в ai-provider). В GitLab Variables лежит ТОЛЬКО ключ расшифровки.
 
+> Портабельное описание этой механики (для переноса в другой проект/форк):
+> [`../migration_env_crypt.md`](../migration_env_crypt.md) — структура, полные
+> исходники скриптов, снипеты интеграции, чеклист.
+
 Структура `.envs/`:
 
 ```
@@ -35,17 +39,24 @@
 ├── test/
 │   ├── public.yaml        # несекретное: SSH_HOST, DOMAIN, PROJECT_NAME, BRAND_*, ...
 │   ├── secret.yaml        # секретное (gitignored!): ADMIN_PASSWORD, DEPLOY_SSH_KEY
-│   └── secret.enc.yaml    # зашифрованный secret.yaml (в git)
+│   ├── secret.enc.yaml    # зашифрованный secret.yaml (в git)
+│   ├── .agekey            # приватный age-ключ стенда (gitignored)
+│   └── .agekey.public     # публичный recipient-ключ стенда (в git)
 └── production/
     ├── public.yaml
     ├── secret.yaml        # (gitignored)
-    └── secret.enc.yaml
+    ├── secret.enc.yaml
+    ├── .agekey            # (gitignored)
+    └── .agekey.public
 ```
 
 - **public.yaml** — несекретные значения (в git открыто);
 - **secret.yaml** — секретные значения, **в `.gitignore`**; шаблон — `secret.yaml.example`;
 - **secret.enc.yaml** — результат шифрования `secret.yaml` через sops+age, **в git**;
-- **`.agekey`** — приватный age-ключ (gitignored), **`.agekey.public`** — recipient (в git).
+- **`.agekey`** — приватный age-ключ стенда (per-env, **в `.gitignore`** — правило
+  матчит `.agekey` на любом уровне);
+- **`.agekey.public`** — публичный recipient-ключ стенда (per-env, **в git**) — им
+  шифрует `encrypt.sh`.
 
 Переменные окружения в yaml — **ВЕРХНИМ регистром** (`SSH_HOST`, `ADMIN_PASSWORD`,
 `DEPLOY_SSH_KEY`), т.к. экспортируются в env. `DEPLOY_SSH_KEY` — `base64` приватного
@@ -54,18 +65,21 @@ SSH-ключа деплоя (`base64 -w0 path/to/id_rsa`), без passphrase.
 Цикл работы с секретами:
 
 ```bash
-# 0) Первичная генерация пары ключей (один раз; приватный НЕ коммитить):
-age-keygen -o .agekey          # создаёт .agekey (gitignored); public — вторая строка файла
-cat .agekey | grep -o 'age1.*' > .agekey.public
+# 0) Генерация пары ключей для нового стенда (per-env; приватный НЕ коммитить!):
+age-keygen -o .envs/test/.agekey        # приватный ключ (gitignored)
+age-keygen -y .envs/test/.agekey > .envs/test/.agekey.public   # recipient (в git)
+# (альтернатива: grep -o 'age1.*' .envs/test/.agekey > .envs/test/.agekey.public)
 
 # 1) Заполни секреты:
 cp .envs/test/secret.yaml.example .envs/test/secret.yaml   # и заполни
 
 # 2) Зашифруй и закоммить результат:
 bash scripts/encrypt.sh test     # обновляет .envs/test/secret.enc.yaml
-git add .envs/test/secret.enc.yaml .agekey.public
+                                 # recipient — из .envs/test/.agekey.public
+git add .envs/test/secret.enc.yaml .envs/test/.agekey.public
 
 # 3) Обратно (поредактировать): bash scripts/decrypt.sh test
+#    ключ: env SOPS_AGE_KEY > SOPS_AGE_KEY_FILE > .envs/test/.agekey
 ```
 
 Требуются `sops` и `age-keygen`/`age` ([sops](https://github.com/getsops/sops),
@@ -78,9 +92,12 @@ git add .envs/test/secret.enc.yaml .agekey.public
 | `SOPS_AGE_KEY_TEST` | тест-сервер — приватный age-ключ стенда |
 | `SOPS_AGE_KEY_PRODUCTION` | прод-сервер — приватный age-ключ стенда |
 
-Каждая переменная — **содержимое приватного age-ключа** (вторая строка файла
-`.agekey`, начинающаяся с `AGE-SECRET-KEY-`). Ключи per-стенд: расшифровать
-тестовые секреты продовым ключом нельзя.
+Каждая переменная — **содержимое приватного age-ключа** стенда (вторая строка
+файла `.envs/<env>/.agekey`, начинающаяся с `AGE-SECRET-KEY-`). Ключи
+per-стенд: расшифровать тестовые секреты продовым ключом нельзя. При
+генерации новой пары для стенда обновите его переменную содержимым нового
+`.envs/<env>/.agekey` (остальные переменные не трогаются — ключи env'ов
+независимы).
 
 Старые `DEPLOY_BUNDLE_*`, `DEPLOY_HOST` / `DEPLOY_PATH` / `SSH_PRIVATE_KEY` /
 `DEPLOY_COMPOSE_PROJECT` больше **не используются**.
@@ -88,19 +105,22 @@ git add .envs/test/secret.enc.yaml .agekey.public
 ## Локальный тест-запуск
 
 ```bash
-# Ключ — из ./.agekey (gitignored) или env SOPS_AGE_KEY; registry-логин скипается,
-# если CI_REGISTRY/CI_JOB_TOKEN не заданы (docker login в registry на сервере сделан руками).
+# Ключ — из .envs/<env>/.agekey (per-env, gitignored) или env SOPS_AGE_KEY;
+# registry-логин скипается, если CI_REGISTRY/CI_JOB_TOKEN не заданы
+# (docker login в registry на сервере сделан руками).
 DEPLOY_ENV=test \
 FRONTEND_IMAGE="registry.example.com/proj/frontend:abc123" \
 BACKEND_IMAGE="registry.example.com/proj/backend:abc123" \
   bash docker/deploy_ci.sh
-# Либо всё готовыми значениями: ./deployci-test.sh (DEPLOY_ENV=test по умолчанию)
+# Либо всё готовыми значениями: ./deployci-test.sh (DEPLOY_ENV=test по умолчанию;
+# проверяет наличие .envs/test/.agekey)
 ```
 
 ## Поток docker/deploy_ci.sh
 
 1. Расшифровывает `.envs/$DEPLOY_ENV/secret.enc.yaml` через `SOPS_AGE_KEY`
-   (sops + age), мержит с `public.yaml` (yq; secret перекрывает public) и
+   (в CI — из GitLab Variables; при локальном запуске без env — fallback из
+   `.envs/$DEPLOY_ENV/.agekey`), мержит с `public.yaml` (yq; secret перекрывает public) и
    экспортирует всё как переменные окружения. Скачивание отсутствующих
    бинарников (`sops`/`yq`) идёт с ретраями (`dl_with_retry`,
    `curl --retry 3`); сначала проверяются предустановленные в `/opt/binaries`

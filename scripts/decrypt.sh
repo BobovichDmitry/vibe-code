@@ -4,8 +4,8 @@
 #
 # Использование: bash scripts/decrypt.sh <test|production|...>
 #
-# Требуется приватный ключ: env SOPS_AGE_KEY (содержимое ключа), SOPS_AGE_KEY_FILE
-# или файл .agekey в корне репо (gitignored).
+# Требуется приватный ключ per-env: env SOPS_AGE_KEY (содержимое ключа),
+# SOPS_AGE_KEY_FILE или файл .envs/<env>/.agekey (gitignored).
 # =============================================================================
 set -euo pipefail
 
@@ -22,12 +22,12 @@ if [ ! -f ".envs/${ENV}/secret.enc.yaml" ]; then
   exit 1
 fi
 
-# Приватный ключ: env SOPS_AGE_KEY > SOPS_AGE_KEY_FILE > ./.agekey
+# Приватный ключ: env SOPS_AGE_KEY > SOPS_AGE_KEY_FILE > .envs/<env>/.agekey
 if [ -z "${SOPS_AGE_KEY:-}" ] && [ -z "${SOPS_AGE_KEY_FILE:-}" ]; then
-  if [ -f "./.agekey" ]; then
-    export SOPS_AGE_KEY_FILE="./.agekey"
+  if [ -f ".envs/${ENV}/.agekey" ]; then
+    export SOPS_AGE_KEY_FILE=".envs/${ENV}/.agekey"
   else
-    echo "✗ Нет ключа: задай SOPS_AGE_KEY (или SOPS_AGE_KEY_FILE, или создай ./.agekey)" >&2
+    echo "✗ Нет ключа: задай SOPS_AGE_KEY (или SOPS_AGE_KEY_FILE), либо создай .envs/${ENV}/.agekey (age-keygen -o .envs/${ENV}/.agekey)" >&2
     exit 1
   fi
 fi
